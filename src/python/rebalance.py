@@ -1,8 +1,8 @@
 """
-Rebalance Kafka partition replicas for a given topic to achieve HA, given the
+Rebalance Kafka partition replicas for a list of topics to achieve HA, given the
 topology info (upgrade domain/fault domain) about each broker.
 
-You need to run this scripts with admin privilege, i.e.: sudo python rebalance.py
+You need to run this scripts with admin privilege, i.e.: sudo python rebalance.py -h
 
 Tested for Kafka 0.8.1.1
 """
@@ -10,6 +10,7 @@ import sys
 import json
 import subprocess
 import os.path
+import argparse
 import requests
 from hdinsight_common.AmbariHelper import AmbariHelper
 
@@ -19,32 +20,74 @@ TOPOLOGY_DIMENSION = 2
 MAX_NUM_REPLICA = 3
 
 LOG_INFO = True
+
+# Used to mock topology info, [[update_domain, fault_domain], [...], ...]
+# Set to None to disable mocking
+# MOCKED_TOPO_INFO = [[0,0],[1,0],[2,1],[3,2]]
+MOCKED_TOPO_INFO = None
+
 REASSIGN_FILE_NAME = "/tmp/_to_move.json"
 ZOOKEEPER_PORT = ":2181"
-ZOOKEEPER_PARAMS = "--zookeeper "
+ZOOKEEPER_PARAMS = None
 
-# always call reassign_gen before calling reassign_exec
-def reassign_gen(topic):
+# Get the list of all topics in Kafka
+def get_topic_list():
     global ZOOKEEPER_PARAMS
-    ZOOKEEPER_PARAMS += get_zookeeper_connect_string()
+    if ZOOKEEPER_PARAMS is None:
+        ZOOKEEPER_PARAMS = "--zookeeper " + get_zookeeper_connect_string()
+
     s = subprocess.check_output(["./kafka-topics.sh",
         ZOOKEEPER_PARAMS,
-        "--describe",
-        "--topic " + topic])
-    partitions_info = parse_partitions_info(s)
-    topo_info = parse_topo_info(get_topo_json_str())
+        "--list"])
+    if len(s) > 0:
+        return s.split()
+    else:
+        return []
 
-    rgen = ReassignmentGenerator(topo_info, topic, partitions_info)
-    r = rgen.reassign()
-    sr = None
-    if r is not None:
-        sr = json.dumps(r)
+# Generate reassignment plan for multiple topics and save to a file
+# Return the reassignment plan as a string
+# Note: always call reassign_gen before calling reassign_exec
+def reassign_gen(topics):
+    rj = reassign_gen_json(topics)
+    ret = None
+    if rj is not None:
+        ret = json.dumps(rj)
         f = open(REASSIGN_FILE_NAME, "w")
-        f.write(sr)
+        f.write(ret)
         f.close()
-    return sr
+    return ret
+
+# Generate reassignment plan for multiple toppics as a dictionary
+def reassign_gen_json(topics):
+    global ZOOKEEPER_PARAMS
+    if ZOOKEEPER_PARAMS is None:
+        ZOOKEEPER_PARAMS = "--zookeeper " + get_zookeeper_connect_string()
+    topo_info = MOCKED_TOPO_INFO
+    if topo_info is None:
+        topo_info = parse_topo_info(get_topo_json_str())
+    ret = None
+    for topic in topics:
+        s = subprocess.check_output(["./kafka-topics.sh",
+            ZOOKEEPER_PARAMS,
+            "--describe",
+            "--topic " + topic])
+        if s is None or len(s)==0:
+            raise Exception("Failed to get Kafka partition info for topic " + topic)
+        partitions_info = parse_partitions_info(s)
+
+        rgen = ReassignmentGenerator(topo_info, topic, partitions_info)
+        r = rgen.reassign()
+        if ret is None:
+            ret = r
+        else:
+            #merge partitions from different topics
+            ret["partitions"] += r["partitions"]
+    return ret
 
 def reassign_exec():
+    global ZOOKEEPER_PARAMS
+    if ZOOKEEPER_PARAMS is None:
+        ZOOKEEPER_PARAMS = "--zookeeper " + get_zookeeper_connect_string()
     s = subprocess.check_output(["./kafka-reassign-partitions.sh",
         ZOOKEEPER_PARAMS,
         "--reassignment-json-file " + REASSIGN_FILE_NAME,
@@ -163,9 +206,6 @@ class ReassignmentGenerator:
             " for partition " + str(partition))
     
 def parse_partitions_info(s):
-    if s is None or len(s)==0:
-        raise Exception("Failed to get Kafka partition info")
-
     lines = s.split('\n')
     if len(lines) < 2:
         raise Exception("Failed to parse Kafka partition info")
@@ -185,20 +225,6 @@ def parse_partitions_info(s):
         partitions_info[partition] = replicas
     return partitions_info
 
-def get_topo_json_str():
-    # TBD: the final solution is to read a file in local disk.
-    # Need to wait until the VM agent is updated for this to work.
-
-    # Read cluster manifest settings "cluster_topology_json_url"
-    ah = AmbriHelper()
-    settings = ah.get_cluster_manifest().settings
-    if "cluster_topology_json_url" in settings:
-        json_url = ["cluster_topology_json_url"]
-        r = requests.get(json_url)
-        return r.text
-    else:
-        raise Exception("Failed to get cluster_topology_json_url from cluster manifest")
-
 def get_zookeeper_connect_string():
     ah = AmbariHelper()
     hosts = ah.get_host_components()
@@ -212,6 +238,20 @@ def get_zookeeper_connect_string():
         return zkHosts[:-1]
     else:
         raise Exception("Failed to get Zookeeper information from Ambari!")
+
+def get_topo_json_str():
+    # TBD: the final solution is to read a file in local disk.
+    # Need to wait until the VM agent is updated for this to work.
+
+    # Read cluster manifest settings "cluster_topology_json_url"
+    ah = AmbariHelper()
+    settings = ah.get_cluster_manifest().settings
+    if "cluster_topology_json_url" in settings:
+        json_url = ["cluster_topology_json_url"]
+        r = requests.get(json_url)
+        return r.text
+    else:
+        raise Exception("Failed to get cluster_topology_json_url from cluster manifest")
 
 def parse_topo_info(s):
     v = json.loads(s)["hostGroups"]["workerNode"]
@@ -228,16 +268,22 @@ def parse_topo_info(s):
     return topo_info
     
 if __name__ == "__main__":
-    if len(sys.argv) < 2:
-        print "Usage: rebalance.py <topic> [--execute]"
-    elif len(sys.argv) == 3 and sys.argv[2]=="--execute":
-        reassign_gen(sys.argv[1])
+    parser = argparse.ArgumentParser(description='Rebalance Kafka partition replicas for a list of topics to achieve High Availability')
+    parser.add_argument('--topics', nargs='+', help='list of topics to reassign replicas, if not provided reassign all topics')
+    parser.add_argument('--execute', nargs='?', const='true', default='false', help='whether or not to execute the reassignment plan')
+    args = parser.parse_args()
+    topics = args.topics
+    if topics is None:
+        topics = get_topic_list()
+    print 'rebalancing topics: ' + str(topics)
+    if args.execute=='true':
+        reassign_gen(topics)
         reassign_exec()
     else:
-        r = reassign_gen(sys.argv[1])
+        r = reassign_gen(topics)
         if r is None:
-            print "Kafka replica assignment has HA"
+            print "No need to rebalance. Kafka replica assignment has HA"
         else:
-            print "Please run this command with '--execute' to rebalance replicas"
+            print "Rebalance is needed. Please run this command with '--execute'"
             print "This is the reassignment-json-file, saved as " + REASSIGN_FILE_NAME
             print r
