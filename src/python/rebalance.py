@@ -25,6 +25,7 @@ ZOOKEEPER_PARAMS = "--zookeeper "
 
 # always call reassign_gen before calling reassign_exec
 def reassign_gen(topic):
+    global ZOOKEEPER_PARAMS
     ZOOKEEPER_PARAMS += get_zookeeper_connect_string()
     s = subprocess.check_output(["./kafka-topics.sh",
         ZOOKEEPER_PARAMS,
