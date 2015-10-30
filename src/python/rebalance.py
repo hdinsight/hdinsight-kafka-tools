@@ -23,7 +23,7 @@ LOG_INFO = True
 
 # Used to mock topology info, [[update_domain, fault_domain], [...], ...]
 # Set to None to disable mocking
-# MOCKED_TOPO_INFO = [[0,0],[1,0],[2,1],[3,2]]
+#MOCKED_TOPO_INFO = [[0,0],[1,0],[2,1],[3,2]]
 MOCKED_TOPO_INFO = None
 
 REASSIGN_FILE_NAME = "/tmp/_to_move.json"
@@ -95,6 +95,16 @@ def reassign_exec():
     print s
     if "Successfully started reassignment of partitions" not in s:
         raise Exception("Operation Failed!")
+
+def reassign_verify():
+    global ZOOKEEPER_PARAMS
+    if ZOOKEEPER_PARAMS is None:
+        ZOOKEEPER_PARAMS = "--zookeeper " + get_zookeeper_connect_string()
+    s = subprocess.check_output(["./kafka-reassign-partitions.sh",
+        ZOOKEEPER_PARAMS,
+        "--reassignment-json-file " + REASSIGN_FILE_NAME,
+        "--verify"])
+    print s
 
 '''
 Generate reassign JSON string for Kafka partition replica reassignment tool
@@ -266,24 +276,34 @@ def parse_topo_info(s):
             raise Exception("Not all VMs in the same availability set!")
         aid = item["availabilitySetId"]
     return topo_info
-    
-if __name__ == "__main__":
+
+def main():
     parser = argparse.ArgumentParser(description='Rebalance Kafka partition replicas for a list of topics to achieve High Availability')
     parser.add_argument('--topics', nargs='+', help='list of topics to reassign replicas, if not provided reassign all topics')
     parser.add_argument('--execute', nargs='?', const='true', default='false', help='whether or not to execute the reassignment plan')
+    parser.add_argument('--verify', nargs='?', const='true', default='false', help='verify execution of the reassignment plan')
     args = parser.parse_args()
+
+    if args.verify=='true':
+        reassign_verify()
+        return
+
     topics = args.topics
     if topics is None:
         topics = get_topic_list()
     print 'rebalancing topics: ' + str(topics)
+
+    r = reassign_gen(topics)
+    if r is None:
+        print "No need to rebalance. Current Kafka replica assignment has HA"
+        return
+
     if args.execute=='true':
-        reassign_gen(topics)
         reassign_exec()
     else:
-        r = reassign_gen(topics)
-        if r is None:
-            print "No need to rebalance. Kafka replica assignment has HA"
-        else:
-            print "Rebalance is needed. Please run this command with '--execute'"
-            print "This is the reassignment-json-file, saved as " + REASSIGN_FILE_NAME
-            print r
+        print "Rebalance is needed. Please run this command with '--execute'"
+        print "This is the reassignment-json-file, saved as " + REASSIGN_FILE_NAME
+        print r
+
+if __name__ == "__main__":
+    main()

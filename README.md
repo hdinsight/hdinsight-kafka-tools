@@ -14,15 +14,22 @@ You need to run this tool after creating a new topic, or rescaling the cluster (
 ### How to use
 Copy the file to /usr/hdp/current/kafka-broker/bin, and run it (For now you need to run as root):
 
-$sudo python rebalance.py [-h] [--topics TOPICS [TOPICS ...]] [--execute [EXECUTE]]
-
 ```
+usage: rebalance.py [-h] [--topics TOPICS [TOPICS ...]] [--execute [EXECUTE]]
+                    [--verify [VERIFY]]
+
+Rebalance Kafka partition replicas for a list of topics to achieve High
+Availability
+
 optional arguments:
   -h, --help            show this help message and exit
   --topics TOPICS [TOPICS ...]
                         list of topics to reassign replicas, if not provided
                         reassign all topics
   --execute [EXECUTE]   whether or not to execute the reassignment plan
+  --verify [VERIFY]     verify execution of the reassignment plan
 ```
 
 Without "--execute" this tool only scans the current assignment generates the replica reassignment file.
+
+To verify the rebalance progress, just do "sudo rebalance.py --verify".
