@@ -13,6 +13,7 @@ You need to run this tool after creating a new topic, or rescaling the cluster (
 
 ### How to use
 Copy the file to /usr/hdp/current/kafka-broker/bin, and run it (For now you need to run as root):
+
 $sudo python rebalance.py [-h] [--topics TOPICS [TOPICS ...]] [--execute [EXECUTE]]
 
 ```
