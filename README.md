@@ -12,20 +12,16 @@ The provided rebalance tool reads cluster topology from Azure, reassigns replica
 You need to run this tool after creating a new topic, or rescaling the cluster (scale up or scale down).
 
 ### How to use
-Note that for now you need to run this scripts as root:
+Copy the file to /usr/hdp/current/kafka-broker/bin, and run it (For now you need to run as root):
+$sudo python rebalance.py [-h] [--topics TOPICS [TOPICS ...]] [--execute [EXECUTE]]
 
-$sudo python ./rebalance.py -h
-usage: rebalance.py [-h] [--topics TOPICS [TOPICS ...]] [--execute [EXECUTE]]
-
-Rebalance Kafka partition replicas for a list of topics to achieve HA
-
+```
 optional arguments:
   -h, --help            show this help message and exit
   --topics TOPICS [TOPICS ...]
                         list of topics to reassign replicas, if not provided
                         reassign all topics
   --execute [EXECUTE]   whether or not to execute the reassignment plan
+```
 
 Without "--execute" this tool only scans the current assignment generates the replica reassignment file.
-
-
