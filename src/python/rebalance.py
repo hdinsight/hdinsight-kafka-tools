@@ -1,18 +1,34 @@
 """
-Rebalance Kafka partition replicas for a list of topics to achieve HA, given the
-topology info (upgrade domain/fault domain) about each broker.
+OVERVIEW:
+=========
+Rebalance Kafka partition replicas for a given topic to achieve High Availbility.
+The rebalancing id one based on the topology info of cluster nodes i.e.
+(upgrade domain/fault domain) about each broker node.
 
-You need to run this scripts with admin privilege, i.e.: sudo python rebalance.py -h
+PRE-REQS:
+=========
+sudo apt-get install libffi-dev libssl-dev
+sudo pip install --upgrade requests[security] PyOpenSSL ndg-httpsclient pyasn1
 
-Tested for Kafka 0.8.1.1
+RUNNING THE SCRIPT:
+===================
+You need to run this script with sudo privilege due to permission issues on some python packages:
+sudo python rebalance.py -h
+
+Tested on HDInsight 3.2 (Linux Ubuntu 12) with HDP 2.2.7.1 and Kafka 0.8.1.1
 """
+
+import logging
 import sys
 import json
 import subprocess
 import os.path
 import argparse
 import requests
+from hdinsight_common import hdinsightlogging
 from hdinsight_common.AmbariHelper import AmbariHelper
+
+logger = logging.getLogger(__name__)
 
 # Number of domain dimensions. currently 2: update domain, fault domain
 TOPOLOGY_DIMENSION = 2
@@ -36,7 +52,7 @@ def get_topic_list():
     if ZOOKEEPER_PARAMS is None:
         ZOOKEEPER_PARAMS = "--zookeeper " + get_zookeeper_connect_string()
 
-    s = subprocess.check_output(["./kafka-topics.sh",
+    s = subprocess.check_output(["/usr/hdp/current/kafka-broker/bin/kafka-topics.sh",
         ZOOKEEPER_PARAMS,
         "--list"])
     if len(s) > 0:
@@ -88,11 +104,11 @@ def reassign_exec():
     global ZOOKEEPER_PARAMS
     if ZOOKEEPER_PARAMS is None:
         ZOOKEEPER_PARAMS = "--zookeeper " + get_zookeeper_connect_string()
-    s = subprocess.check_output(["./kafka-reassign-partitions.sh",
+    s = subprocess.check_output(["/usr/hdp/current/kafka-broker/bin/kafka-reassign-partitions.sh",
         ZOOKEEPER_PARAMS,
         "--reassignment-json-file " + REASSIGN_FILE_NAME,
         "--execute"])
-    print s
+    logger.info(s)
     if "Successfully started reassignment of partitions" not in s:
         raise Exception("Operation Failed!")
 
@@ -104,7 +120,7 @@ def reassign_verify():
         ZOOKEEPER_PARAMS,
         "--reassignment-json-file " + REASSIGN_FILE_NAME,
         "--verify"])
-    print s
+    logger.info(s)
 
 '''
 Generate reassign JSON string for Kafka partition replica reassignment tool
@@ -206,8 +222,8 @@ class ReassignmentGenerator:
             if not self._is_conflict(seen, c):
                 #reassign broker b to broker c
                 if LOG_INFO:
-                    print "reassigning partition: " + str(partition) + \
-                        ", broker " + str(b) + " to " + str(c)
+                    logger.info("reassigning partition: " + str(partition) + \
+                        ", broker " + str(b) + " to " + str(c))
                 self.broker_load[b] -= 1
                 self.broker_load[c] += 1
                 self.sorted_broker.sort(key=lambda b:self.broker_load[b])
@@ -255,22 +271,31 @@ def get_topo_json_str():
 
     # Read cluster manifest settings "cluster_topology_json_url"
     ah = AmbariHelper()
-    settings = ah.get_cluster_manifest().settings
+    cluster_manifest = ah.get_cluster_manifest()
+    settings = cluster_manifest.settings
+    logger.info(settings)
     if "cluster_topology_json_url" in settings:
-        json_url = ["cluster_topology_json_url"]
+        json_url = settings["cluster_topology_json_url"]
+        logger.info("cluster_topology_json_url = %s", json_url)
         r = requests.get(json_url)
-        return r.text
+        topology_info = r.text
+        logger.info(topology_info)
+        return topology_info
     else:
         raise Exception("Failed to get cluster_topology_json_url from cluster manifest")
 
 def parse_topo_info(s):
-    v = json.loads(s)["hostGroups"]["workerNode"]
+    v = json.loads(s)["hostGroups"]["workernode"]
     topo_info = [[0,0] for i in range(len(v))]
+    logger.info(topo_info)
     aid = -1
     for item in v:
+        logger.info(item)
         broker = item["vmId"]
+        logger.info(topo_info[broker])
         topo_info[broker][0] = item["updateDomain"]
         topo_info[broker][1] = item["faultDomain"]
+        logger.info(topo_info[broker])
         #make sure all VM falls into the same availability set
         if aid != -1 and item["availabilitySetId"] != aid:
             raise Exception("Not all VMs in the same availability set!")
@@ -291,19 +316,20 @@ def main():
     topics = args.topics
     if topics is None:
         topics = get_topic_list()
-    print 'rebalancing topics: ' + str(topics)
+    logger.info('rebalancing topics: %s', str(topics))
 
     r = reassign_gen(topics)
     if r is None:
-        print "No need to rebalance. Current Kafka replica assignment has HA"
+        logger.info("No need to rebalance. Current Kafka replica assignment has High Availability")
         return
 
     if args.execute=='true':
         reassign_exec()
     else:
-        print "Rebalance is needed. Please run this command with '--execute'"
-        print "This is the reassignment-json-file, saved as " + REASSIGN_FILE_NAME
-        print r
+        logger.info("Rebalance is needed. Please run this command with '--execute'")
+        logger.info("This is the reassignment-json-file, saved as %s", REASSIGN_FILE_NAME)
+        logger.info(r)
 
 if __name__ == "__main__":
+    hdinsightlogging.initialize_root_logger()
     main()

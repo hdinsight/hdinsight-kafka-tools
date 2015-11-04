@@ -17,47 +17,171 @@ class Test(unittest.TestCase):
         self.assertEqual(r, [[2,0,1],[1,2,3]])
 
     def test_parse_topo_info(self):
-        a = '''{
-            "currentInstance": {
-                "VmId": 0,
-                "hostGroup": "gateway",
-                "configuration": { 
-                    "key": "value"
-                }
+        a = '''
+{
+    "hostGroups": {
+        "gateway": [
+            {
+                "vmId": 0,
+                "fqdn": "gw0-foobar",
+                "state": "Succeeded",
+                "faultDomain": 0,
+                "updateDomain": 0,
+                "availabilitySetId": "/subscriptions/63b34899-ad65-4508-bd67-d8d7efc28194/resourcegroups/rg0-d93ef9c75f8b46f6be278cc0fff8470fresourcegroup/providers/Microsoft.Compute/availabilitySets/gateway-0"
             },
-            "hostGroups": {
-                "gateway": [
-                    {
-                        "vmId": 0,
-                        "fqdn": "foo.bar.hdinsight.net",
-                        "state": "ready",
-                        "configuration": "whatever",
-                        "faultDomain": 0,
-                        "updateDomain": 1,
-                        "availabilitySetId": 0
-                    }
-                ],
-                "workerNode": [
-                    {
-
-                        "vmId": 0,
-                        "fqdn": "foo.bar.hdinsight.net",
-                        "state": "ready",
-                        "faultDomain": 0,
-                        "updateDomain": 0,
-                        "availabilitySetId": 0
-                    },
-                    {
-                        "vmId": 1,
-                        "fqdn": "foo.bar.hdinsight.net",
-                        "state": "ready",
-                        "faultDomain": 1,
-                        "updateDomain": 1,
-                        "availabilitySetId": 0
-                    }
-                ]
+            {
+                "vmId": 1,
+                "fqdn": "gw1-foobar",
+                "state": "Succeeded",
+                "faultDomain": 1,
+                "updateDomain": 1,
+                "availabilitySetId": "/subscriptions/63b34899-ad65-4508-bd67-d8d7efc28194/resourcegroups/rg0-d93ef9c75f8b46f6be278cc0fff8470fresourcegroup/providers/Microsoft.Compute/availabilitySets/gateway-0"
             }
-        }
+        ],
+        "headnode": [
+            {
+                "vmId": 0,
+                "fqdn": "hn0-foobar",
+                "state": "Succeeded",
+                "faultDomain": 0,
+                "updateDomain": 0,
+                "availabilitySetId": "/subscriptions/63b34899-ad65-4508-bd67-d8d7efc28194/resourcegroups/rg0-d93ef9c75f8b46f6be278cc0fff8470fresourcegroup/providers/Microsoft.Compute/availabilitySets/headnode-0"
+            },
+            {
+                "vmId": 1,
+                "fqdn": "hn1-foobar",
+                "state": "Succeeded",
+                "faultDomain": 1,
+                "updateDomain": 1,
+                "availabilitySetId": "/subscriptions/63b34899-ad65-4508-bd67-d8d7efc28194/resourcegroups/rg0-d93ef9c75f8b46f6be278cc0fff8470fresourcegroup/providers/Microsoft.Compute/availabilitySets/headnode-0"
+            }
+        ],
+        "workernode": [
+            {
+                "vmId": 0,
+                "fqdn": "wn0-foobar",
+                "state": "Succeeded",
+                "faultDomain": 2,
+                "updateDomain": 0,
+                "availabilitySetId": "/subscriptions/63b34899-ad65-4508-bd67-d8d7efc28194/resourcegroups/rg0-d93ef9c75f8b46f6be278cc0fff8470fresourcegroup/providers/Microsoft.Compute/availabilitySets/workernode-0"
+            },
+            {
+                "vmId": 1,
+                "fqdn": "wn1-foobar",
+                "state": "Succeeded",
+                "faultDomain": 1,
+                "updateDomain": 1,
+                "availabilitySetId": "/subscriptions/63b34899-ad65-4508-bd67-d8d7efc28194/resourcegroups/rg0-d93ef9c75f8b46f6be278cc0fff8470fresourcegroup/providers/Microsoft.Compute/availabilitySets/workernode-0"
+            },
+            {
+                "vmId": 10,
+                "fqdn": "wn10-foobar",
+                "state": "Succeeded",
+                "faultDomain": 2,
+                "updateDomain": 1,
+                "availabilitySetId": "/subscriptions/63b34899-ad65-4508-bd67-d8d7efc28194/resourcegroups/rg0-d93ef9c75f8b46f6be278cc0fff8470fresourcegroup/providers/Microsoft.Compute/availabilitySets/workernode-0"
+            },
+            {
+                "vmId": 11,
+                "fqdn": "wn11-foobar",
+                "state": "Succeeded",
+                "faultDomain": 0,
+                "updateDomain": 1,
+                "availabilitySetId": "/subscriptions/63b34899-ad65-4508-bd67-d8d7efc28194/resourcegroups/rg0-d93ef9c75f8b46f6be278cc0fff8470fresourcegroup/providers/Microsoft.Compute/availabilitySets/workernode-0"
+            },
+            {
+                "vmId": 12,
+                "fqdn": "wn12-foobar",
+                "state": "Succeeded",
+                "faultDomain": 0,
+                "updateDomain": 3,
+                "availabilitySetId": "/subscriptions/63b34899-ad65-4508-bd67-d8d7efc28194/resourcegroups/rg0-d93ef9c75f8b46f6be278cc0fff8470fresourcegroup/providers/Microsoft.Compute/availabilitySets/workernode-0"
+            },
+            {
+                "vmId": 2,
+                "fqdn": "wn2-foobar",
+                "state": "Succeeded",
+                "faultDomain": 2,
+                "updateDomain": 2,
+                "availabilitySetId": "/subscriptions/63b34899-ad65-4508-bd67-d8d7efc28194/resourcegroups/rg0-d93ef9c75f8b46f6be278cc0fff8470fresourcegroup/providers/Microsoft.Compute/availabilitySets/workernode-0"
+            },
+            {
+                "vmId": 3,
+                "fqdn": "wn3-foobar",
+                "state": "Succeeded",
+                "faultDomain": 1,
+                "updateDomain": 4,
+                "availabilitySetId": "/subscriptions/63b34899-ad65-4508-bd67-d8d7efc28194/resourcegroups/rg0-d93ef9c75f8b46f6be278cc0fff8470fresourcegroup/providers/Microsoft.Compute/availabilitySets/workernode-0"
+            },
+            {
+                "vmId": 4,
+                "fqdn": "wn4-foobar",
+                "state": "Succeeded",
+                "faultDomain": 0,
+                "updateDomain": 2,
+                "availabilitySetId": "/subscriptions/63b34899-ad65-4508-bd67-d8d7efc28194/resourcegroups/rg0-d93ef9c75f8b46f6be278cc0fff8470fresourcegroup/providers/Microsoft.Compute/availabilitySets/workernode-0"
+            },
+            {
+                "vmId": 5,
+                "fqdn": "wn5-foobar",
+                "state": "Succeeded",
+                "faultDomain": 1,
+                "updateDomain": 2,
+                "availabilitySetId": "/subscriptions/63b34899-ad65-4508-bd67-d8d7efc28194/resourcegroups/rg0-d93ef9c75f8b46f6be278cc0fff8470fresourcegroup/providers/Microsoft.Compute/availabilitySets/workernode-0"
+            },
+            {
+                "vmId": 6,
+                "fqdn": "wn6-foobar",
+                "state": "Succeeded",
+                "faultDomain": 0,
+                "updateDomain": 4,
+                "availabilitySetId": "/subscriptions/63b34899-ad65-4508-bd67-d8d7efc28194/resourcegroups/rg0-d93ef9c75f8b46f6be278cc0fff8470fresourcegroup/providers/Microsoft.Compute/availabilitySets/workernode-0"
+            },
+            {
+                "vmId": 7,
+                "fqdn": "wn7-foobar",
+                "state": "Succeeded",
+                "faultDomain": 0,
+                "updateDomain": 0,
+                "availabilitySetId": "/subscriptions/63b34899-ad65-4508-bd67-d8d7efc28194/resourcegroups/rg0-d93ef9c75f8b46f6be278cc0fff8470fresourcegroup/providers/Microsoft.Compute/availabilitySets/workernode-0"
+            },
+            {
+                "vmId": 8,
+                "fqdn": "wn8-foobar",
+                "state": "Succeeded",
+                "faultDomain": 1,
+                "updateDomain": 0,
+                "availabilitySetId": "/subscriptions/63b34899-ad65-4508-bd67-d8d7efc28194/resourcegroups/rg0-d93ef9c75f8b46f6be278cc0fff8470fresourcegroup/providers/Microsoft.Compute/availabilitySets/workernode-0"
+            }
+        ],
+        "zookeepernode": [
+            {
+                "vmId": 0,
+                "fqdn": "zk0-foobar",
+                "state": "Succeeded",
+                "faultDomain": 0,
+                "updateDomain": 0,
+                "availabilitySetId": "/subscriptions/63b34899-ad65-4508-bd67-d8d7efc28194/resourcegroups/rg0-d93ef9c75f8b46f6be278cc0fff8470fresourcegroup/providers/Microsoft.Compute/availabilitySets/zookeepernode-0"
+            },
+            {
+                "vmId": 1,
+                "fqdn": "zk1-foobar",
+                "state": "Succeeded",
+                "faultDomain": 2,
+                "updateDomain": 2,
+                "availabilitySetId": "/subscriptions/63b34899-ad65-4508-bd67-d8d7efc28194/resourcegroups/rg0-d93ef9c75f8b46f6be278cc0fff8470fresourcegroup/providers/Microsoft.Compute/availabilitySets/zookeepernode-0"
+            },
+            {
+                "vmId": 2,
+                "fqdn": "zk2-foobar",
+                "state": "Succeeded",
+                "faultDomain": 1,
+                "updateDomain": 1,
+                "availabilitySetId": "/subscriptions/63b34899-ad65-4508-bd67-d8d7efc28194/resourcegroups/rg0-d93ef9c75f8b46f6be278cc0fff8470fresourcegroup/providers/Microsoft.Compute/availabilitySets/zookeepernode-0"
+            }
+        ]
+    }
+}
         '''
         r = rebalance.parse_topo_info(a)
         self.assertEqual([0,0], r[0])
