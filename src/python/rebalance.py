@@ -79,20 +79,23 @@ def reassign_gen_json(topics):
     if ZOOKEEPER_PARAMS is None:
         ZOOKEEPER_PARAMS = "--zookeeper " + get_zookeeper_connect_string()
     topo_info = MOCKED_TOPO_INFO
+    vmid_to_index={i:i for i in range(len(topo_info))}
+    index_to_vmid={i:i for i in range(len(topo_info))}
     if topo_info is None:
-        topo_info = parse_topo_info(get_topo_json_str())
+        topo_info,vmid_to_index,index_to_vmid = parse_topo_info(get_topo_json_str())
     ret = None
     for topic in topics:
-        s = subprocess.check_output(["./kafka-topics.sh",
+        s = subprocess.check_output(["/usr/hdp/current/kafka-broker/bin/kafka-topics.sh",
             ZOOKEEPER_PARAMS,
             "--describe",
             "--topic " + topic])
         if s is None or len(s)==0:
             raise Exception("Failed to get Kafka partition info for topic " + topic)
-        partitions_info = parse_partitions_info(s)
+        partitions_info = parse_partitions_info(s, vmid_to_index)
 
         rgen = ReassignmentGenerator(topo_info, topic, partitions_info)
         r = rgen.reassign()
+        convert_reassign_json_vmid(r, index_to_vmid)
         if ret is None:
             ret = r
         else:
@@ -116,7 +119,7 @@ def reassign_verify():
     global ZOOKEEPER_PARAMS
     if ZOOKEEPER_PARAMS is None:
         ZOOKEEPER_PARAMS = "--zookeeper " + get_zookeeper_connect_string()
-    s = subprocess.check_output(["./kafka-reassign-partitions.sh",
+    s = subprocess.check_output(["/usr/hdp/current/kafka-broker/bin/kafka-reassign-partitions.sh",
         ZOOKEEPER_PARAMS,
         "--reassignment-json-file " + REASSIGN_FILE_NAME,
         "--verify"])
@@ -230,8 +233,10 @@ class ReassignmentGenerator:
                 return c
         raise Exception("Cannot reassign replica " + str(b) +
             " for partition " + str(partition))
-    
-def parse_partitions_info(s):
+
+# Parse partition info from output of Kafka tools
+# Since Kafka broker ID matches VM ID, we need to convert vmid to broker index
+def parse_partitions_info(s, vmid_to_index):
     lines = s.split('\n')
     if len(lines) < 2:
         raise Exception("Failed to parse Kafka partition info")
@@ -248,7 +253,8 @@ def parse_partitions_info(s):
             continue
         partition = int(lines[i].split('Partition: ')[1].split()[0])
         replicas = map(int, lines[i].split('Replicas: ')[1].split()[0].split(','))
-        partitions_info[partition] = replicas
+        index_replicas = map(lambda v: vmid_to_index[v], replicas)
+        partitions_info[partition] = index_replicas
     return partitions_info
 
 def get_zookeeper_connect_string():
@@ -284,23 +290,39 @@ def get_topo_json_str():
     else:
         raise Exception("Failed to get cluster_topology_json_url from cluster manifest")
 
+# Parse the topology json string, extract:
+# 1) a list describing domains for each broker [[b1_d1,b1_d2], [b2_d1,b2_d2], ...]
+# 2) VM ID to index map
+# 3) index to VM ID map
+# Note that 2) and 3) are needed because the VM IDs may contain gap, e.g. 0, 2, 3, 5
 def parse_topo_info(s):
     v = json.loads(s)["hostGroups"]["workernode"]
     topo_info = [[0,0] for i in range(len(v))]
+    vmid_to_index = {}
+    index_to_vmid = {}
     logger.info(topo_info)
-    aid = -1
+    aid = None
+    index = 0
     for item in v:
         logger.info(item)
-        broker = item["vmId"]
-        logger.info(topo_info[broker])
-        topo_info[broker][0] = item["updateDomain"]
-        topo_info[broker][1] = item["faultDomain"]
-        logger.info(topo_info[broker])
+        vmid = item["vmId"]
+        vmid_to_index[vmid] = index
+        index_to_vmid[index] = vmid
+        topo_info[index][0] = item["updateDomain"]
+        topo_info[index][1] = item["faultDomain"]
+        logger.info(topo_info[index])
         #make sure all VM falls into the same availability set
-        if aid != -1 and item["availabilitySetId"] != aid:
+        if aid != None and item["availabilitySetId"] != aid:
             raise Exception("Not all VMs in the same availability set!")
         aid = item["availabilitySetId"]
-    return topo_info
+        index += 1
+    return topo_info,vmid_to_index, index_to_vmid
+
+def convert_reassign_json_vmid(reassignment, index_to_vmid):
+    if reassignment is None:
+        return reassignment
+    for r in reassignment["partitions"]:
+        r["replicas"] = map(lambda i: index_to_vmid[i], r["replicas"])
 
 def main():
     parser = argparse.ArgumentParser(description='Rebalance Kafka partition replicas for a list of topics to achieve High Availability')

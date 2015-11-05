@@ -13,8 +13,9 @@ class Test(unittest.TestCase):
         Topic: test.2   Partition: 0    Leader: 2       Replicas: 2,0,1 Isr: 2,0,1
         Topic: test.2   Partition: 1    Leader: 1       Replicas: 1,2,3 Isr: 1,2,3
         '''
-        r = rebalance.parse_partitions_info(a)
-        self.assertEqual(r, [[2,0,1],[1,2,3]])
+        v_to_i = {0:1, 1:2, 2:3, 3:0}
+        r = rebalance.parse_partitions_info(a, v_to_i)
+        self.assertEqual(r, [[3,1,2],[2,3,0]])
 
     def test_parse_topo_info(self):
         a = '''
@@ -183,10 +184,12 @@ class Test(unittest.TestCase):
     }
 }
         '''
-        r = rebalance.parse_topo_info(a)
-        self.assertEqual([0,0], r[0])
+        r, vi, iv = rebalance.parse_topo_info(a)
+        self.assertEqual([0,2], r[0])
         self.assertEqual([1,1], r[1])
-    
+        self.assertEqual([0,1], r[11])
+        self.assertEqual({0:0, 1:1, 10:2, 11:3, 12:4, 2:5, 3:6, 4:7, 5:8, 6:9, 7:10, 8:11},vi)
+        self.assertEqual({0:0, 1:1, 2:10, 3:11, 4:12, 5:2, 6:3, 7:4, 8:5, 9:6, 10:7, 11:8},iv)
     '''
     Generate topology info along the diagonal of the two dimensions
     '''
