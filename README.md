@@ -33,3 +33,38 @@ optional arguments:
 Without "--execute" this tool only scans the current assignment generates the replica reassignment file.
 
 To verify the rebalance progress, just do "sudo rebalance.py --verify".
+
+## Kafka metrics retreival script
+src/python/metrics.py
+
+### Additional Information
+The script queries Ambari metrics service to retreive point-in-time or time-based Kafka metrics.
+
+### How to use
+Copy the file to HDInsight Kafka (Storm) cluster headnode, and run it (For now you need to run as root):
+
+```
+usage: metrics.py [-h] [-t [TEMPORAL]]
+
+Get Kafka metrics from Ambari
+
+optional arguments:
+  -h, --help            show this help message and exit
+  -t [TEMPORAL], --temporal [TEMPORAL]
+                        specify the time interval (in seconds) to get temporal
+                        metrics (default: last 5 minutes metrics are
+                        returned). NOT specifying this argument will return
+                        current point-in-time metrics
+```
+
+### Troubleshooting
+You may need to check the status of Ambari metrics service in Ambari to ensure this script works.
+
+Known-Issues:
+* Try switching between point-in-time and temporal modes for the script
+* If you do not see metrics being returned for a longer period of time, try restarting the Ambari metrics service through Ambari interface.
+
+### References
+* https://cwiki.apache.org/confluence/display/AMBARI/Metrics
+* https://cwiki.apache.org/confluence/display/AMBARI/Stack+Defined+Metrics
+* https://cwiki.apache.org/confluence/display/AMBARI/Ambari+Metrics+API+specification
