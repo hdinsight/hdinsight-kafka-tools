@@ -12,10 +12,10 @@ RUNNING THE SCRIPT:
 1) Copy the script to /usr/hdp/current/kafka-broker/bin on your cluster
 
 2) Run this script with sudo privilege due to permission issues on some python packages:
-sudo python rebalance.py
+sudo python rebalance_new.py
 '''
 
-import logging, sys, json, subprocess, os.path, errno, traceback, argparse, requests
+import logging, sys, json, subprocess, os.path, errno, traceback, argparse, requests, os, re, time
 from retry import retry
 from operator import itemgetter
 from logging import StreamHandler
@@ -25,7 +25,6 @@ from hdinsight_common import hdinsightlogging
 from hdinsight_common.AmbariHelper import AmbariHelper
 from hdinsight_common import Constants as CommonConstants
 from hdinsight_common import cluster_utilities
-from hdinsight_kafka import Utilities
 from kazoo.client import KazooClient
 from kazoo.client import KazooState
 
@@ -109,57 +108,81 @@ def add_syslog_handler(logger, syslog_facility):
         return False
 
 # Constants
-ASSIGNMENT_JSON_FILE = "/tmp/rebalancePlan.json"
+ASSIGNMENT_JSON_FILE = "/tmp/kafka_rebalance/rebalancePlan.json"
 ZOOKEEPER_PORT = ":2181"
 ZOOKEEPER_HOSTS = None
-MAX_NUM_REPLICA = 3
 BROKERS_ID_PATH = "brokers/ids"
-KAFKA_TOPICS_TOOL_PATH = "/usr/hdp/current/kafka-broker/bin/kafka-topics.sh"
-KAFKA_REASSING_PARTITIONS_TOOL_PATH = "/usr/hdp/current/kafka-broker/bin/kafka-reassign-partitions.sh"
+KAFKA_TOPICS_TOOL = "/kafka-topics.sh"
+KAFKA_REASSIGN_PARTITIONS_TOOL = "/kafka-reassign-partitions.sh"
 FQDN = "fqdn"
 BROKER_ID = "brokerId"
 FAULT_DOMAIN = "faultDomain"
 UPDATE_DOMAIN = "updateDomain"
+FAULT_DOMAIN_SHORT = "FD"
+UPDATE_DOMAIN_SHORT = "UD"
 RACK = "rack"
 VM_ID = "vmId"
 PARTITION = "partition"
 REPLICAS = "replicas"
 LEADER = "leader"
+LEADERS = "leaders"
 FOLLOWERS = "followers"
 TOPICS = "topics"
 ISR = "isr"
 
-# Get the list of all topics in Kafka
+'''
+Returns a list of all topics in Kafka by executing the Kafka-topics tool
+'''
 def get_topic_list():
-    s = subprocess.check_output([
-        KAFKA_TOPICS_TOOL_PATH,
-        "--zookeeper",
-        cluster_utilities.get_zk_quorum(),
-        "--list"
-    ])
-    if len(s) > 0:
-        return s.split()
-    else:
-        return []
+    try:
+        s = subprocess.check_output([
+            KAFKA_TOPICS_TOOL_PATH,
+            "--zookeeper",
+            cluster_utilities.get_zk_quorum(),
+            "--list"
+        ])
+        if len(s) > 0:
+            logger.info("List of all topics: %s", s.split())
+            return s.split()
+        else:
+            return []
+    except Exception:
+        logger.error('Exception occurred when calling Kafka topics tool: ' + traceback.format_exc())
+        logger.info('See logs for more details.')
+        sys.exit()
 
-# Returns the cluster topology JSON from the cluster manifest 
+'''
+Uses AmbariHelper from hdinsight-common to get the cluster manifest and parses it to get the cluster topology JSON object.
+''' 
 def get_cluster_topology_json():
     cluster_manifest = amabriHelper.get_cluster_manifest()
     settings = cluster_manifest.settings
     if "cluster_topology_json_url" in settings:
         json_url = settings["cluster_topology_json_url"]
+        logger.info("Cluster Topology JSON url: %s", json_url)
         r = requests.get(json_url)
         topology_info = r.text
         return topology_info
     else:
         raise Exception("Failed to get cluster_topology_json_url from cluster manifest")
 
-# Parses the cluster topology JSON and returns vmInfo
-def parse_topo_info(cluster_topology_json, zookeeper_client):
+'''
+Parses the cluster topology JSON doc and returns Host information
+Returns: A list of dictionaries.
+host_info = [
+    {
+        "vmId": 1
+        "FD": 0
+        "UD": 0
+        "fqdn": 'wn0-k09v3'
+        "brokerId": 1024,
+        "rack": FD0UD0
+    },
+]
+'''
+def parse_topo_info(cluster_topology_json, brokers_info):
     workernode_info = json.loads(cluster_topology_json)["hostGroups"]["workernode"]
     host_info = []
-    # Get broker Ids to Hosts mapping
-    brokers_info = get_brokerhost_info(zookeeper_client)
     for node in workernode_info:
         host = { 
             VM_ID: node[VM_ID],
@@ -167,12 +190,21 @@ def parse_topo_info(cluster_topology_json, zookeeper_client):
             UPDATE_DOMAIN: str(node[UPDATE_DOMAIN]),
             FQDN: node[FQDN],
             BROKER_ID: brokers_info[node[FQDN]] if node[FQDN] in brokers_info else None,
-            RACK: FAULT_DOMAIN + str(node[FAULT_DOMAIN]) + UPDATE_DOMAIN + str(node[UPDATE_DOMAIN])
+            RACK: FAULT_DOMAIN_SHORT + str(node[FAULT_DOMAIN]) + UPDATE_DOMAIN_SHORT + str(node[UPDATE_DOMAIN])
         }
         host_info.append(host);
+    logger.info("Host Information: %s", host_info)
     return host_info
 
-# Returns info about a partitcular topic
+'''
+Call the Kafka topic tool to get partition info about a topic. The return format is:
+[
+    'Topic:dummyTopic PartitionCount:13 ReplicationFactor:3 Configs:segment.bytes=104857600,cleanup.policy=compact,compression.type=uncompressed', 
+    ' Topic: dummyTopic Partition: 0 Leader: 1026 Replicas: 1026,1028,1014 Isr: 1026,1028,1014', 
+    ' Topic: dummyTopic Partition: 1 Leader: 1020 Replicas: 1020,1014,1017 Isr: 1020,1014,1017',
+    ..
+    ]
+'''
 def get_topic_info(topic):
     topicInfo = subprocess.check_output([
         KAFKA_TOPICS_TOOL_PATH,
@@ -194,17 +226,21 @@ def get_replica_count_topic(topic):
     
     summary = topicInfo_lines[0].split()
     replica_count = int(summary[2].split(":")[1])
-    if replica_count > MAX_NUM_REPLICA:
-        raise Exception("Replica count exceeds threshold")
     return replica_count
 
-# Returns info about partitions for a given topic
-def get_partition_info(topic):
-    topicInfo = get_topic_info(topic)
-    topicInfo_lines = topicInfo.split('\n')
-    if len(topicInfo_lines) < 2:
-        raise Exception("Failed to parse Kafka partition info")
-    
+'''
+Parses through the output of the Kafka Topic tools and returns info about partitions for a given topic.
+Return format: partitions_info = [
+    {
+        "partition": partition,
+        "leader": leader,
+        "replicas": replicas,
+        "isr": isr
+    },
+    ...
+]
+'''
+def get_partition_info(topicInfo_lines):    
     partitions_info = []
     for i in range(1, len(topicInfo_lines)):
         if len(topicInfo_lines[i].strip())==0:
@@ -235,6 +271,17 @@ def connect(zk_quorum):
 def connection_lost(state):
     if state == KazooState.LOST or state == KazooState.SUSPENDED:
         raise RuntimeError("Fatal error lost connection to zookeeper.")
+
+'''
+Get broker ID to Host mapping from zookeeper.
+Returns a dictionary:
+    brokers_info = {
+        'wn30-foobar': '1017',
+        'wn25-foobar': '1016',
+        'wn7-foobar': '1008',
+        ..
+        }
+'''
 
 def get_brokerhost_info(zookeeper_client):
     zk_brokers_ids = zookeeper_client.get_children(BROKERS_ID_PATH)
@@ -267,19 +314,80 @@ def check_brokers_up(host_info):
             return False
     return True
 
-def generate_reassignment_plan(topics, zookeeper_client):
+'''
+Generate a replica reassignment JSON file to be passed to the Kafka Replica reassignment tool.
+The method parses the cluster manifest to retrieve the topology information about hosts, including the fault & update domains. These are passed to the ReassignmentGenerator class which checks if each topic is already balanced and generates a reassignment plan if not.
+
+Return value (reassignment json) is of the format:
+{"partitions":
+    [{"topic": "foo",
+    "partition": 1,
+    "replicas": [1,2,3] }
+    ],
+    "version":1
+}
+
+Sample Cluster Topology JSON:
+{
+    "hostGroups": {
+        "gateway": [
+            {
+                ...
+            },
+            .
+            .
+        ],
+        "headnode": [
+            {
+                ...
+            },
+            .
+            .
+        ],
+        "workernode": [
+            {
+                "vmId": 0,
+                "fqdn": "wn0-k09v3",
+                "state": "Succeeded",
+                "faultDomain": 0,
+                "updateDomain": 2,
+                "availabilitySetId": "/subscriptions/abe48551-c98b-4263-97b3-098a4c35bc08/resourcegroups/rg0-d373d1ab2fb94339ad55b18da21bb049resourcegroup/providers/Microsoft.Compute/availabilitySets/workernode-0"
+            },
+            .
+            .
+        ],
+        "zookeepernode": [
+            {
+                ...
+            }
+        ]
+    }
+}
+'''
+
+'''
+Generates a reassignment plan for each of the topics selected.
+'''
+def generate_reassignment_plan(topics, brokers_info):
     ret = None
     # Retrieve Cluster topology
     cluster_topology_json = get_cluster_topology_json()
     # Parse JSON to retrieve information about hosts 
-    host_info = parse_topo_info(cluster_topology_json, zookeeper_client)
-    fd_list, ud_list = generate_fd_list_ud_list(host_info)
+    host_info = parse_topo_info(cluster_topology_json, brokers_info)
 
     if check_brokers_up(host_info):
         for topic in topics:
-            partition_info = get_partition_info(topic)
-            rassignment_Generator = ReassignmentGenerator(host_info, topic, partition_info, fd_list, ud_list)
-            reassignment_plan = rassignment_Generator.generate_reassignment_plan_for_topic()
+            # Get topic info using the Kakfa topic tool
+            topicInfo = get_topic_info(topic)
+            logger.info("Info for topic %s: %s", topic, topicInfo)
+            topicInfo_lines = topicInfo.split('\n')
+            if len(topicInfo_lines) < 2:
+                raise Exception("Failed to parse Kafka topic info for topic: %s", topic)
+
+            partition_info = get_partition_info(topicInfo_lines)
+            rassignment_Generator = ReassignmentGenerator(host_info, topic, partition_info)
+            replica_count_topic = get_replica_count_topic(topic)
+            reassignment_plan = rassignment_Generator._generate_reassignment_plan_for_topic(replica_count_topic)
             if reassignment_plan is not None:
                 if ret is None:
                     ret = reassignment_plan
@@ -293,62 +401,125 @@ def generate_reassignment_plan(topics, zookeeper_client):
     return ret
 
 class ReassignmentGenerator:
-    def __init__(self, host_info, topic, partition_info, fd_list, ud_list):
+    def __init__(self, host_info, topic, partition_info):
         self.host_info = host_info
         self.topic = topic
         self.partition_info = partition_info
         self.partitions_count = len(partition_info)
-        self.fd_list = fd_list
-        self.ud_list = ud_list
     
-    def generate_alternated_ud_fd_list(self):
-        fd_index = 0
-        ud_index = 0
-        ud_fd_list = []
-        for index in range(0,len(self.fd_list)*len(self.ud_list)):
-            ud_fd_list.append(FAULT_DOMAIN + self.fd_list[fd_index % len(self.fd_list)] + UPDATE_DOMAIN + self.ud_list[ud_index % len(self.ud_list)])
-            fd_index += 1
-            ud_index += 1
-        return ud_fd_list
-        
-    def is_partition_eligible_reassignment(self, partition):
-        ''' 
-        Conditions required for a partition to be eligible for ReassignmentGenerator
-        1> MIN(len(ISR)) >= 1
-        2> Leader is in ISR
-        3> Leader is assigned (not -1)
-        4> Replicas are present
-        ''' 
-        if all([len(partition[ISR]) >= 1, partition[LEADER] in partition[ISR], int(partition[LEADER]) != -1, partition[REPLICAS]]):
+    def _generate_fd_ud_list(self):
+        # Get set of FD+UDs
+        fd_ud_set = set()
+        for val in self.host_info:
+            fd_ud_set.add(val[RACK])
+        return sorted(fd_ud_set)
+
+    def _get_fd_rack(self, rack):
+        domains =  re.findall(r'\d+', rack)
+        return int(domains[0])
+
+    def _get_ud_rack(self, rack):
+        domains =  re.findall(r'\d+', rack)
+        return int(domains[1])
+    
+    def _check_if_coprime(self, a, b):
+        hcf = lambda n1, n2: n1 if n2 == 0 else hcf( n2, n1 % n2 )
+        if hcf(a,b) == 1:
             return True
-        logger.info("Partition %s for Topic %s does not meet criteria for rebalance. Skipping.", partition[PARTITION], self.topic)
-        return False
+        else:
+            return False
+
+    '''
+    Generates a list of alternated FD+UD combinations. List = [ (fd1,ud1) , (fd2,ud2), ... ]
+    Example with 3 FDs and 3 UDs : ['FD0UD0', 'FD1UD1', 'FD2UD2', 'FD0UD1', 'FD1UD2', 'FD2UD0', 'FD0UD2', 'FD1UD0', 'FD2UD1']
+    '''
+    def _generate_alternated_fd_ud_list(self, fd_ud_list, fd_list, ud_list):
+        alternated_list = []
+
+        # Find largest FD# & UD#. This is required because there could be gaps and we need to know the largest # to compute the possible FD x UD matrix. Missing combinations of (FD,UD) in the VMs allocated are not added to the final list.
+        fd_length = max(map(int, fd_list)) + 1
+        ud_length = max(map(int, ud_list)) + 1
+
+        i = 0
+        j = 0
+
+        # Traverse matrix in diagonal slices
+        while True:
+            current_rack = FAULT_DOMAIN_SHORT + str(i % fd_length) + UPDATE_DOMAIN_SHORT + str(j % ud_length)
+            if current_rack in fd_ud_list:
+                if not current_rack in alternated_list:
+                    alternated_list.append(current_rack)
+                # If FD+UD combo is already present in alternated_list, we are revisting this the second time. Hence, break out of the loop.
+                else:
+                    break
+            i += 1
+            # If matrix inputs are of form (n,nm) or (m,m), add a shift to UD index so that we get a different diagonal slice. To get the next adjacent diagonal slice, we shift by ud_length - 1.
+            if (fd_length & ud_length == 0 or ud_length % fd_length == 0) and i % fd_length == 0:
+                j += ud_length - 1
+            else:
+                j += 1
+
+        return alternated_list
     
-    def get_brokers_in_rack(self, rack):
+    ''' 
+    Conditions required for a partition to be eligible for ReassignmentGenerator
+    1> MIN(len(ISR)) >= 1
+    2> Leader is in ISR
+    3> Leader is assigned (not -1)
+    4> Replicas are present
+    5> Number of replicas for partition should be equal to replica count for topic
+    ''' 
+    def _is_partition_eligible_reassignment(self, partition, replica_count_topic):
+        does_not_meet_criteria_msg = "Partition for topic does not meet criteria for rebalance. Skipping."
+        if not len(partition[ISR]) >= 1:
+            logger.info("%s - Topic: %s, Partition: %s. Criteria not met: 'There should be at least one replica in the ISR'.", does_not_meet_criteria_msg, self.topic, partition[PARTITION])
+            return False
+        if not partition[LEADER] in partition[ISR]:
+            logger.info("%s - Topic: %s, Partition: %s. Criteria not met: 'The leader should be in the ISR'.", does_not_meet_criteria_msg, self.topic, partition[PARTITION])
+            return False
+        if not int(partition[LEADER]) != -1:
+            logger.info("%s - Topic: %s, Partition: %s. Criteria not met: 'There should be an assigned leader. Leader cannot be -1'.", does_not_meet_criteria_msg, self.topic, partition[PARTITION])
+            return False
+        if not partition[REPLICAS]:
+            logger.info("%s - Topic: %s, Partition: %s. Criteria not met: 'Replicas cannot be null'.",does_not_meet_criteria_msg, self.topic, partition[PARTITION])
+            return False
+        if not len(partition[REPLICAS]) == int(replica_count_topic):
+            logger.info("%s - Topic: %s, Partition: %s. Criteria not met: 'Number of replicas for partition should be equal to replica count for topic'.", does_not_meet_criteria_msg, self.topic, partition[PARTITION])
+            return False
+        return True
+    
+    def _get_brokers_in_rack(self, rack):
         return [element for element in self.host_info if element[RACK] == rack]
     
-    def get_broker_info(self, b_id):
+    def _get_broker_info(self, b_id):
         return [element for element in self.host_info if int(element[BROKER_ID]) == b_id][0]
     
-    def get_count_replicas_in_broker(self, broker_id, broker_replica_count):
+    def _get_count_replicas_in_broker(self, broker_id, broker_replica_count):
         return [element for element in broker_replica_count if element[BROKER_ID] == broker_id][0]
     
-    def increment_count_replicas_in_broker(self, broker_id, broker_replica_count, type_of_count):
+    def _increment_count_replicas_in_broker(self, broker_id, broker_replica_count, type_of_count):
         e = [element for element in broker_replica_count if element[BROKER_ID] == broker_id][0]
         e[type_of_count] += 1
     
-    def assign_replica_for_partition(self, rack_alternated_list, broker_replica_count, next_rack, type_of_replica):
-        eligible_brokers = self.get_brokers_in_rack(rack_alternated_list[next_rack])
+    '''
+    Determines the rack (FD+UD combination) for the replica. Once determined, there could be multiple brokers that meet the criteria. We choose the broker which has less number of replicas assigned to it. (distribute the load)
+    '''
+    def _assign_replica_for_partition(self, rack_alternated_list, broker_replica_count, next_rack, type_of_replica):
+        eligible_brokers = self._get_brokers_in_rack(rack_alternated_list[next_rack])
         new_broker = eligible_brokers[0]
         for broker in eligible_brokers:
-            a = self.get_count_replicas_in_broker(broker[BROKER_ID], broker_replica_count)[type_of_replica]
-            b = self.get_count_replicas_in_broker(new_broker[BROKER_ID], broker_replica_count)[type_of_replica]
+            a = self._get_count_replicas_in_broker(broker[BROKER_ID], broker_replica_count)[type_of_replica]
+            b = self._get_count_replicas_in_broker(new_broker[BROKER_ID], broker_replica_count)[type_of_replica]
             if a < b:
                 new_broker = broker
-        self.increment_count_replicas_in_broker(new_broker[BROKER_ID], broker_replica_count, type_of_replica)
+        self._increment_count_replicas_in_broker(new_broker[BROKER_ID], broker_replica_count, type_of_replica)
         return new_broker[BROKER_ID]
 
-    def scan_partition_for_reassignment(self, index, brokers_replica_count, rack_alternated_list, next_Leader, next_Follower, round_robin_iteration):
+    '''
+    This method reassigns the replicas for the given partition.
+    The leader of the partitions are chosen from rack alternated list round-robin. The follower starts from the broker next to the leader. Once it has completed the first round-robin, if there are more partitions to assign, the algorithm will start to have a shift for the first follower. The shift is N times number of racks, which N increasing for each round. This is to ensure we will not always get the same set of sequence.
+    ''' 
+    def _scan_partition_for_reassignment(self, index, brokers_replica_count, rack_alternated_list, next_Leader, next_Follower, round_robin_iteration):
         reassignment = { "topic" : self.topic,
         PARTITION : self.partition_info[index][PARTITION],
         REPLICAS : []
@@ -359,18 +530,17 @@ class ReassignmentGenerator:
         shift = rack_count * round_robin_iteration
 
         # Re-assign Leader
-        leader_broker_id = self.assign_replica_for_partition(rack_alternated_list, brokers_replica_count, next_Leader % rack_count, "leaders")
+        leader_broker_id = self._assign_replica_for_partition(rack_alternated_list, brokers_replica_count, next_Leader % rack_count, LEADERS)
+        prev_leader = next_Leader % rack_count
         next_Leader += 1
         reassignment[REPLICAS].append(leader_broker_id)
 
         # Re-assign follower replicas
         if replica_count > 1:
             for j in range(0,replica_count-1):
-                follower_broker_id = self.assign_replica_for_partition(rack_alternated_list, brokers_replica_count, (next_Follower + j + shift) % rack_count, FOLLOWERS)
+                follower_broker_id = self._assign_replica_for_partition(rack_alternated_list, brokers_replica_count, (next_Follower + j + shift) % rack_count, FOLLOWERS)
                 reassignment[REPLICAS].append(follower_broker_id)
             next_Follower += 1
-        
-        #logger.info("Partition: " + str(self.partition_info[index][PARTITION]) + " - Changing " + str(self.partition_info[index][REPLICAS]) + " to " + str(reassignment[REPLICAS]))
 
         # Check if round robin complete
         if next_Follower % rack_count == 0:
@@ -378,51 +548,59 @@ class ReassignmentGenerator:
 
         return reassignment, next_Leader, next_Follower, round_robin_iteration
 
-    def check_if_topic_balanced(self):
+    '''
+    Iterate through all partitions of a topic to determine if they are balanced. 
+        1) Add the UD+FD Domain of all replicas to a list - fd_ud_list
+        2) Compare Length(fd_ud_list) to Length(Set(fd_ud_list)). If the fd_ud combo is distinct, the comparison will be true and we know the partition is balanced.     
+    '''
+    def _check_if_topic_balanced(self):
         for p in self.partition_info:
             fd_ud_list = []
             for replica in p[REPLICAS]:
                 # Get the rack associated with the replica and add to list
-                fd_ud_list.append(self.get_broker_info(int(replica))[RACK])
+                fd_ud_list.append(self._get_broker_info(int(replica))[RACK])
             if len(fd_ud_list) > len(set(fd_ud_list)):
                 return False
         return True       
 
-    def generate_reassignment_plan_for_topic(self):
+    def _generate_reassignment_plan_for_topic(self, replica_count_topic):
         ret = None
         reassignment={"partitions":[], "version":1}
 
         # Check if(Min(#UD,#FD) > = #replicas)
-        if min ([len(self.ud_list), len(self.fd_list)]) < get_replica_count_topic(self.topic):
+        fd_list, ud_list = generate_fd_list_ud_list(self.host_info)
+        if min ([len(ud_list), len(fd_list)]) < replica_count_topic:
             logger.info("There are not as many upgrade/fault domains as the replica count for the topic %s. Rebalance with HA guarantee not possible! Skipping rebalance for the topic.", self.topic)
             return ret
         
         # Check if there is a valid number of replicas for the topic
-        if get_replica_count_topic(self.topic) <= 1:
+        if replica_count_topic <= 1:
             logger.info("Invalid number of replicas for topic %s. Rebalance with HA guarantee not possible! Skipping rebalance for the topic.", self.topic)
             return ret
-        
+
         # Check if the topic is already balanced. If not generate rebalance plan
-        if not self.check_if_topic_balanced():
+        if not self._check_if_topic_balanced():
             logger.info("Generating Rebalance plan for TOPIC: %s", self.topic)
             # Keep track of numbers of replicas assigned to each broker
             brokers_replica_count = []
             for host in self.host_info:
                 b = {
                     BROKER_ID : host[BROKER_ID],
-                    "leaders" : 0,
+                    LEADERS : 0,
                     FOLLOWERS: 0,
                 }
                 brokers_replica_count.append(b) 
-
-            rack_alternated_list = self.generate_alternated_ud_fd_list()
+            
+            fd_ud_list = self._generate_fd_ud_list()
+            rack_alternated_list = self._generate_alternated_fd_ud_list(fd_ud_list, fd_list, ud_list)
             next_Leader = 0
             next_Follower = 1
             round_robin_iteration = 0
             
+            # Iterate through all partitions and check whether they need to be re-balanced
             for i in range(0,len(self.partition_info)):
-                if self.is_partition_eligible_reassignment(self.partition_info[i]):
-                    r, next_Leader, next_Follower, round_robin_iteration = self.scan_partition_for_reassignment(i, brokers_replica_count, rack_alternated_list, next_Leader, next_Follower, round_robin_iteration)
+                if self._is_partition_eligible_reassignment(self.partition_info[i], replica_count_topic):
+                    r, next_Leader, next_Follower, round_robin_iteration = self._scan_partition_for_reassignment(i, brokers_replica_count, rack_alternated_list, next_Leader, next_Follower, round_robin_iteration)
                     if r is not None:
                         reassignment["partitions"].append(r)
                         ret = reassignment
@@ -432,7 +610,7 @@ class ReassignmentGenerator:
         return ret
 
 def reassign_verify():
-    s = subprocess.check_output([KAFKA_REASSING_PARTITIONS_TOOL_PATH,
+    s = subprocess.check_output([KAFKA_REASSIGN_PARTITIONS_TOOL_PATH,
     "--zookeeper",
     cluster_utilities.get_zk_quorum(),
     "--reassignment-json-file " + ASSIGNMENT_JSON_FILE,
@@ -441,7 +619,7 @@ def reassign_verify():
     logger.info(s)
 
 def reassign_exec():
-    s = subprocess.check_output([KAFKA_REASSING_PARTITIONS_TOOL_PATH,
+    s = subprocess.check_output([KAFKA_REASSIGN_PARTITIONS_TOOL_PATH,
     "--zookeeper",
     "--reassignment-json-file " + ASSIGNMENT_JSON_FILE,
     "--execute"
@@ -450,6 +628,19 @@ def reassign_exec():
     if "Successfully started reassignment of partitions" not in s:
         raise Exception("Operation Failed!")
 
+'''
+Log Kafka and HDP Version
+'''
+def get_kafka_hdp_version():
+    p1 = subprocess.Popen(["find ../libs/ -name \*kafka_\*"], shell=True, stdout=subprocess.PIPE)
+    data = p1.stdout.readline()
+    assert p1.wait() == 0
+    data = data.split('\n')[0].split('-')
+    splits = data[1].split('.')
+    kafka_version = splits[0] + "." + splits[1] + "." + splits[2]
+    hdp_version = splits[3] + "." + splits[4] + "." + splits[5] + "." + splits[6]
+    return kafka_version, hdp_version
+
 def main():
     parser = argparse.ArgumentParser(description='Rebalance Kafka Replicas! :)')
     parser.add_argument('--topics', nargs='+', help='Comma separated list of topics to reassign replicas. Use ALL|all to rebalance all topics')
@@ -457,6 +648,17 @@ def main():
     parser.add_argument('--execute', nargs='?', const='true', default='false', help='whether or not to execute the reassignment plan')
     parser.add_argument('--verify', nargs='?', const='true', default='false', help='verify execution of the reassignment plan')
     args = parser.parse_args()
+
+    script_directory = os.path.dirname(os.path.abspath(__file__))
+    logger.info("Script exceuted from: %s", script_directory)
+    kafka_version, hdp_version = get_kafka_hdp_version()
+    logger.info("Kafka Version: %s", kafka_version)
+    logger.info("HDP Version: %s", hdp_version)
+
+    global KAFKA_TOPICS_TOOL_PATH
+    KAFKA_TOPICS_TOOL_PATH = script_directory + KAFKA_TOPICS_TOOL
+    global KAFKA_REASSIGN_PARTITIONS_TOOL_PATH
+    KAFKA_REASSIGN_PARTITIONS_TOOL_PATH = script_directory + KAFKA_REASSIGN_PARTITIONS_TOOL
 
     topics = args.topics
 
@@ -468,12 +670,14 @@ def main():
         topics = get_topic_list()
 
     logger.info("Following topics selected: %s", str(topics))
+    
 
     # Initialize Zookeeper Client
     zookeeper_quorum = cluster_utilities.get_zk_quorum()
     zookeeper_client = connect(zookeeper_quorum)
-
-    reassignment_plan = generate_reassignment_plan(topics, zookeeper_client)
+    # Get broker Ids to Hosts mapping
+    brokers_info = get_brokerhost_info(zookeeper_client)
+    reassignment_plan = generate_reassignment_plan(topics, brokers_info)
 
     if reassignment_plan is None:
         logger.info("No need to rebalance. Current Kafka replica assignment has High Availability OR minimum requirements for rebalance not met. Check logs for more info.")
@@ -488,7 +692,6 @@ def main():
     else:
         logger.info("Please re-run this tool with '--execute' to perform rebalancing.")
         logger.info("This is the reassignment-json-file, saved as %s", ASSIGNMENT_JSON_FILE)
-        #logger.info(reassignment_plan)
 
 if __name__ == "__main__":
     initialize_logger(logger, log_file)
