@@ -422,12 +422,10 @@ class ReassignmentGenerator:
         domains =  re.findall(r'\d+', rack)
         return int(domains[1])
     
-    def _check_if_coprime(self, a, b):
-        hcf = lambda n1, n2: n1 if n2 == 0 else hcf( n2, n1 % n2 )
-        if hcf(a,b) == 1:
-            return True
-        else:
-            return False
+    def _gcd(self, a, b):
+        while b:
+            a, b = b, a % b
+        return a
 
     '''
     Generates a list of alternated FD+UD combinations. List = [ (fd1,ud1) , (fd2,ud2), ... ]
@@ -454,7 +452,7 @@ class ReassignmentGenerator:
                     break
             i += 1
             # If matrix inputs are of form (n,nm) or (m,m), add a shift to UD index so that we get a different diagonal slice. To get the next adjacent diagonal slice, we shift by ud_length - 1.
-            if (fd_length & ud_length == 0 or ud_length % fd_length == 0) and i % fd_length == 0:
+            if self._gcd(ud_length, fd_length) > 1 and i % fd_length == 0:
                 j += ud_length - 1
             else:
                 j += 1

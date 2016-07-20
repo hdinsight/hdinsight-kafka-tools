@@ -182,19 +182,7 @@ class RebalanceTests(unittest.TestCase):
 
     # 3 FDs, 5 UDs
     def test_generate_alternated_fd_ud_list_test_case1(self):
-        fd_ud_list = ['FD0UD0', 'FD0UD1', 'FD0UD2', 'FD0UD3', 'FD0UD4', 'FD1UD0', 'FD1UD1', 'FD1UD2', 'FD1UD3', 'FD1UD4', 'FD2UD0', 'FD2UD1', 'FD2UD2','FD2UD3', 'FD2UD4']
-        fd_list = ['0', '1', '2']
-        ud_list = ['0', '1', '2', '3', '4']
-        rgen = rebalance_new.ReassignmentGenerator("hostInfo", "dummyTopic", "partitionInfo")
-        alternated_list = rgen._generate_alternated_fd_ud_list(fd_ud_list, fd_list, ud_list)
-        expected_list = ['FD0UD0', 'FD1UD1', 'FD2UD2', 'FD0UD3', 'FD1UD4', 'FD2UD0', 'FD0UD1', 'FD1UD2', 'FD2UD3', 'FD0UD4', 'FD1UD0', 'FD2UD1', 'FD0UD2', 'FD1UD3', 'FD2UD4']
-        self.assertEqual(alternated_list, expected_list)
-
-    # Siphon 3 FDs, 5 UDs (k09v3)
-    def test_generate_alternated_fd_ud_list_test_case2(self):
-        fd_ud_list = ['FD0UD0', 'FD0UD1', 'FD0UD2', 'FD0UD3','FD0UD4', 'FD1UD0', 'FD1UD1', 'FD1UD2', 'FD1UD3', 'FD1UD4', 'FD2UD0', 'FD2UD1', 'FD2UD2', 'FD2UD3', 'FD2UD4']
-        fd_list = ['0', '1', '2']
-        ud_list = ['0', '1', '2', '3', '4']
+        fd_ud_list, fd_list, ud_list = self.generate_fd_ud_list(3,5)
         rgen = rebalance_new.ReassignmentGenerator("hostInfo", "dummyTopic", "partitionInfo")
         alternated_list = rgen._generate_alternated_fd_ud_list(fd_ud_list, fd_list, ud_list)
         expected_list = ['FD0UD0', 'FD1UD1', 'FD2UD2', 'FD0UD3', 'FD1UD4', 'FD2UD0', 'FD0UD1', 'FD1UD2', 'FD2UD3', 'FD0UD4', 'FD1UD0', 'FD2UD1', 'FD0UD2', 'FD1UD3', 'FD2UD4']
@@ -212,9 +200,7 @@ class RebalanceTests(unittest.TestCase):
 
     #3 FDs, 3UDs
     def test_generate_alternated_fd_ud_list_test_case4(self):
-        fd_ud_list = ['FD0UD0', 'FD0UD1', 'FD0UD2', 'FD1UD0', 'FD1UD1', 'FD1UD2', 'FD2UD0', 'FD2UD1', 'FD2UD2']
-        fd_list = ['0', '1', '2']
-        ud_list = ['0', '1', '2']
+        fd_ud_list, fd_list, ud_list = self.generate_fd_ud_list(3,3)
         rgen = rebalance_new.ReassignmentGenerator("hostInfo", "dummyTopic", "partitionInfo")
         alternated_list = rgen._generate_alternated_fd_ud_list(fd_ud_list, fd_list, ud_list)
         expected_list = ['FD0UD0', 'FD1UD1', 'FD2UD2', 'FD0UD1', 'FD1UD2', 'FD2UD0', 'FD0UD2', 'FD1UD0', 'FD2UD1']
@@ -232,12 +218,18 @@ class RebalanceTests(unittest.TestCase):
     
     #3 FDs, 6UDs (n, nm)
     def test_generate_alternated_fd_ud_list_test_case6(self):
-        fd_ud_list = ['FD0UD0', 'FD0UD1', 'FD0UD2', 'FD0UD3', 'FD0UD4', 'FD0UD5', 'FD1UD0', 'FD1UD1', 'FD1UD2', 'FD1UD3', 'FD1UD4', 'FD1UD5', 'FD2UD0', 'FD2UD1', 'FD2UD2','FD2UD3', 'FD2UD4', 'FD2UD5']
-        fd_list = ['0', '1', '2']
-        ud_list = ['0', '1', '2', '3', '4', '5']
+        fd_ud_list, fd_list, ud_list = self.generate_fd_ud_list(3,6)
         rgen = rebalance_new.ReassignmentGenerator("hostInfo", "dummyTopic", "partitionInfo")
         alternated_list = rgen._generate_alternated_fd_ud_list(fd_ud_list, fd_list, ud_list)
         expected_list = ['FD0UD0', 'FD1UD1', 'FD2UD2', 'FD0UD1', 'FD1UD2', 'FD2UD3', 'FD0UD2', 'FD1UD3', 'FD2UD4', 'FD0UD3', 'FD1UD4', 'FD2UD5', 'FD0UD4', 'FD1UD5', 'FD2UD0', 'FD0UD5', 'FD1UD0', 'FD2UD1']
+        self.assertEqual(alternated_list, expected_list)
+
+    #4 FDs, 6UDs (n, nm)
+    def test_generate_alternated_fd_ud_list_test_case7(self):
+        fd_ud_list, fd_list, ud_list = self.generate_fd_ud_list(4,6)
+        rgen = rebalance_new.ReassignmentGenerator("hostInfo", "dummyTopic", "partitionInfo")
+        alternated_list = rgen._generate_alternated_fd_ud_list(fd_ud_list, fd_list, ud_list)
+        expected_list = ['FD0UD0', 'FD1UD1', 'FD2UD2', 'FD3UD3', 'FD0UD2', 'FD1UD3', 'FD2UD4', 'FD3UD5', 'FD0UD4', 'FD1UD5', 'FD2UD0', 'FD3UD1']
         self.assertEqual(alternated_list, expected_list)
 
     def test_reassignment_plan_HA_for_topic(self):
@@ -260,6 +252,16 @@ class RebalanceTests(unittest.TestCase):
     
     def get_broker_info(self, b_id, host_info):
         return [element for element in host_info if int(element[rebalance_new.BROKER_ID]) == b_id][0]
+
+    def generate_fd_ud_list(self, m, n):
+        fd_ud_list, fd_list, ud_list = [], [], set()
+        for i in range(0, m):
+            fd_list.append(str(i))
+            for j in range(0, n):
+                ud_list.add(str(j))
+                fd_ud_list.append('FD' + str(i) + 'UD' + str(j))
+        
+        return fd_ud_list, fd_list, sorted(ud_list)
             
 def main():
     unittest.main()
