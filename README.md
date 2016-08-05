@@ -1,70 +1,65 @@
-# hdinsight-kafka-tools
-Tools for Kafka clusters on Azure HDInsight
+# Kafka Partition Rebalance Tool
 
-## Kafka partition replica rebalance tool
-src/python/rebalance.py
+### Introduction
+Kafka is not aware of the cluster topology (not rack aware) and hence partitions are susceptible to data loss or unavailability in the event of faults or updates. 
 
-### Background information
-When you create a topic in Kafka, it creates partitions and place replicas across the cluster. However, Kafka does not know the topology of the cluster, so it could place all replicas of a partition on the same fault domain or update domain. When a fault or update happens in the cloud, that partition will be lost temporarily.
+This tool generates a reassignment plan that has two goals:
+- Redistribute the replicas of partitions of a topic across brokers in a manner such that all replicas of a partition are in separate Update Domains (UDs) & Fault Domains (FDs).
+- Balance the leader load across the cluster - The number of leaders assigned to each broker is more or less the same. 
 
-The provided rebalance tool reads cluster topology from Azure, reassigns replicas if such fault/update domain conflict has been found, therefore achieves high availability.
+Once the reasignment plan is generated the user can execute this plan. Upon execution, the tool updates the zookeeper path '/admin/reassign_partitions' with the list of topic partitions and (if specified in the Json file) the list of their new assigned replicas. The controller listens to the path above. When a data change update is triggered, the controller reads the list of topic partitions and their assigned replicas from zookeeper. The control handles starting new replicas in RAR and waititing until the new replicas are in sync with the leader. At this point, the old replicas are stopped and the partition is removed from the '/admin/reassignpartitions' path. 
+The above steps are async operations.
 
-You need to run this tool after creating a new topic, or rescaling the cluster (scale up or scale down).
+This tool is best stuitable for executing on 
+- New cluster
+- When a new topic is created
+- Cluster is scaled up
+
+Note for execution on existing clusters:
+When executing on a cluster with large data sizes, there will be a performance degradation while reassignment is taking place, due to data movement. On large clusters, rebalance can take several hours. In such scenarios, it is recommended to execute rebalance by steps (by topic or by partitions of a topic).
+
+### Prequisites
+The script relies on various python modules. If not installed already, you must manually install these prior to execution:
+sudo apt-get update
+sudo apt-get install libffi-dev libssl-dev
+sudo pip install --upgrade requests[security] PyOpenSSL ndg-httpsclient pyasn1 kazoo retry pexpect
 
 ### How to use
-Copy the file to /usr/hdp/current/kafka-broker/bin, and run it (For now you need to run as root):
+Copy the file to /usr/hdp/current/kafka-broker/bin, and run it as ROOT.
 
-```
-usage: rebalance.py [-h] [--topics TOPICS [TOPICS ...]] [--execute [EXECUTE]]
-                    [--verify [VERIFY]]
+usage: sudo rebalance_rackaware.py [-h] [-topics TOPICS [TOPICS ...]] [--execute]
+                        [--verify] [--computeStorageCost] [-username USERNAME]
+                        [-password PASSWORD]
 
-Rebalance Kafka partition replicas for a list of topics to achieve High
-Availability
+Rebalance Kafka Replicas.
 
 optional arguments:
   -h, --help            show this help message and exit
-  --topics TOPICS [TOPICS ...]
-                        list of topics to reassign replicas, if not provided
-                        reassign all topics
-  --execute [EXECUTE]   whether or not to execute the reassignment plan
-  --verify [VERIFY]     verify execution of the reassignment plan
-```
+  -topics TOPICS [TOPICS ...]
+                        Comma separated list of topics to reassign replicas.
+                        Use ALL|all to rebalance all topics
+  --execute             whether or not to execute the reassignment plan
+  --verify              Verify status of reassignment operation
+  --computeStorageCost  Use this for a non-new cluster to compute free
+                        disk space per broker and partition sizes to determine
+                        the best reassignment plan.
+  -username USERNAME    Username for current user. Required for computing storage details.
+  -password PASSWORD    Password for current user. Required for computing storage details.
 
 Without "--execute" this tool only scans the current assignment generates the replica reassignment file.
 
-To verify the rebalance progress, just do "sudo rebalance.py --verify".
+### Example Invocation:
+1) Generate reassignment plan for all topics on cluster:
+sudo python rebalance_rackaware.py -topics ALL -username $USERNAME -password $PASSWORD --computeStorageCost
+The plan will be saved at /tmp/kafka_rebalance/rebalancePlan.json
 
-## Kafka metrics retreival script
-src/python/metrics.py
+2) Execute reassignment:
+sudo python rebalance_rackaware.py --execute
+This will execute the plan saved in the above location.
 
-### Additional Information
-The script queries Ambari metrics service to retreive point-in-time or time-based Kafka metrics.
+3) Verify progress of reassignment:
+sudo python rebalance_rackaware.py --verify
 
-### How to use
-Copy the file to HDInsight Kafka (Storm) cluster headnode, and run it (For now you need to run as root):
-
-```
-usage: metrics.py [-h] [-t [TEMPORAL]]
-
-Get Kafka metrics from Ambari
-
-optional arguments:
-  -h, --help            show this help message and exit
-  -t [TEMPORAL], --temporal [TEMPORAL]
-                        specify the time interval (in seconds) to get temporal
-                        metrics (default: last 5 minutes metrics are
-                        returned). NOT specifying this argument will return
-                        current point-in-time metrics
-```
-
-### Troubleshooting
-You may need to check the status of Ambari metrics service in Ambari to ensure this script works.
-
-Known-Issues:
-* Try switching between point-in-time and temporal modes for the script
-* If you do not see metrics being returned for a longer period of time, try restarting the Ambari metrics service through Ambari interface.
-
-### References
-* https://cwiki.apache.org/confluence/display/AMBARI/Metrics
-* https://cwiki.apache.org/confluence/display/AMBARI/Stack+Defined+Metrics
-* https://cwiki.apache.org/confluence/display/AMBARI/Ambari+Metrics+API+specification
+### Debugging
+Debug logs can be found /tmp/kafka_rebalance/rebalance_log.log
+The log file includes detailed information about the steps taken by the tool and can be used for troubleshooting.
