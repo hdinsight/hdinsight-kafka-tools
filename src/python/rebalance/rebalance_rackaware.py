@@ -588,9 +588,6 @@ class ReassignmentGenerator:
         if not partition[REPLICAS]:
             logger.warning("%s - Topic: %s, Partition: %s. Criteria not met: 'Replicas cannot be null'.",does_not_meet_criteria_msg, self.topic, partition[PARTITION])
             return False
-        if not len(partition[REPLICAS]) == int(replica_count_topic):
-            logger.info("%s - Topic: %s, Partition: %s. Criteria not met: 'Number of replicas for partition should be equal to replica count for topic'.", does_not_meet_criteria_msg, self.topic, partition[PARTITION])
-            return False
         partition[ASSIGNED] = True
         return True
 
@@ -648,13 +645,13 @@ class ReassignmentGenerator:
 
         6> Look at the next set of 3 Racks and repeat from 1>
     '''
-    def _scan_partition_for_reassignment(self, index, brokers_replica_count, rack_alternated_list, start_index, ud_count):
+    def _scan_partition_for_reassignment(self, index, brokers_replica_count, rack_alternated_list, start_index, ud_count, replica_count_topic):
         reassignment = { "topic" : self.topic,
         PARTITION : int(self.partition_info[index][PARTITION]),
         REPLICAS : []
         }
 
-        replica_count = len(self.partition_info[index][REPLICAS])
+        replica_count = int(replica_count_topic)
         rack_count = len(rack_alternated_list)
 
         '''
@@ -712,6 +709,10 @@ class ReassignmentGenerator:
     '''
     def _check_if_partition_balanced(self, partition, replica_count, fd_count, ud_count, brokers_replica_count, balanced_partitions):
         logger.debug("Checking if Partition %s is balanced.", partition)
+        if len(partition[REPLICAS]) != replica_count:
+            logger.warning("The replica count for the partition is not the same as the replica count for the topic. Rebalance recommended.")
+            return False
+
         fd_list, ud_list = [], []
         for replica in partition[REPLICAS]:
             # Get the rack associated with the replica and add to list
@@ -754,7 +755,7 @@ class ReassignmentGenerator:
         for i in range(0,len(self.partition_info)):
             if not self._check_if_partition_balanced(self.partition_info[i], replica_count_topic, fd_count, ud_count, brokers_replica_count, balanced_partitions):
                 if self._is_partition_eligible_reassignment(self.partition_info[i], replica_count_topic):
-                    r, next_Leader = self._scan_partition_for_reassignment(i, brokers_replica_count, rack_alternated_list, next_Leader, ud_count)
+                    r, next_Leader = self._scan_partition_for_reassignment(i, brokers_replica_count, rack_alternated_list, next_Leader, ud_count, replica_count_topic)
                     if r is not None:
                         reassignment["partitions"].append(r)
                         ret = reassignment
