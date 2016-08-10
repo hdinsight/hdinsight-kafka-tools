@@ -595,21 +595,38 @@ class ReassignmentGenerator:
         return [element for element in self.host_info if element[RACK] == rack]
 
     def _get_broker_info(self, b_id):
-        return [element for element in self.host_info if int(element[BROKER_ID]) == b_id][0]
+        retList = [element for element in self.host_info if int(element[BROKER_ID]) == b_id]
+        if retList:
+            return retList[0]
+        else:
+            logger.error("Cannot retrieve host associated with broker with ID: %s", BROKER_ID)
+            return
 
     def _get_count_replicas_in_broker(self, broker_id, broker_replica_count):
-        return [element for element in broker_replica_count if element[BROKER_ID] == broker_id][0]
+        retList = [element for element in broker_replica_count if element[BROKER_ID] == broker_id]
+        if retList:
+            return retList[0]
+        else:
+            return None
 
     def _increment_count_replicas_in_broker(self, broker_id, broker_replica_count, type_of_count):
-        e = [element for element in broker_replica_count if element[BROKER_ID] == broker_id][0]
-        e[type_of_count] += 1
+        retList = [element for element in broker_replica_count if element[BROKER_ID] == broker_id]
+        if retList:
+             e = retList[0]
+             e[type_of_count] += 1
+        else:
+            logger.warning("%s not found in broker_replica_count!")
 
     def _get_weighted_count_replicas_in_rack(self, broker_replica_count, rack_alternated_list, rack_index, type_of_replica):
         count = 0
         brokers_in_rack = self._get_brokers_in_rack(rack_alternated_list[rack_index])
-        for broker in brokers_in_rack:
-            count += self._get_count_replicas_in_broker(broker[BROKER_ID], broker_replica_count)[type_of_replica]
-        return count / float(len(brokers_in_rack))
+        if brokers_in_rack:
+            for broker in brokers_in_rack:
+                count += self._get_count_replicas_in_broker(broker[BROKER_ID], broker_replica_count)[type_of_replica]
+            return count / float(len(brokers_in_rack))
+        else:
+            logger.error("No brokers were found for rack %s. Please verify brokers are up!", rack_alternated_list[rack_index])
+            return
 
     '''
         Determines the rack (FD+UD combination) for the replica. Once determined, there could be multiple brokers that meet the criteria. We choose the broker which has less number of replicas assigned to it. (distribute the load)
@@ -617,15 +634,19 @@ class ReassignmentGenerator:
     def _assign_replica_for_partition(self, rack_alternated_list, broker_replica_count, next_rack, type_of_replica):
 
         eligible_brokers = self._get_brokers_in_rack(rack_alternated_list[next_rack])
-        new_broker = eligible_brokers[0]
-        for broker in eligible_brokers:
-            a = self._get_count_replicas_in_broker(broker[BROKER_ID], broker_replica_count)[type_of_replica]
-            b = self._get_count_replicas_in_broker(new_broker[BROKER_ID], broker_replica_count)[type_of_replica]
-            if a < b:
-                new_broker = broker
+        if eligible_brokers:
+            new_broker = eligible_brokers[0]
+            for broker in eligible_brokers:
+                a = self._get_count_replicas_in_broker(broker[BROKER_ID], broker_replica_count)[type_of_replica]
+                b = self._get_count_replicas_in_broker(new_broker[BROKER_ID], broker_replica_count)[type_of_replica]
+                if a < b:
+                    new_broker = broker
 
-        self._increment_count_replicas_in_broker(new_broker[BROKER_ID], broker_replica_count, type_of_replica)
-        return new_broker[BROKER_ID]
+            self._increment_count_replicas_in_broker(new_broker[BROKER_ID], broker_replica_count, type_of_replica)
+            return new_broker[BROKER_ID]
+        else:
+            logger.error("No eligibile brokers found for rack: %s", rack_alternated_list[next_rack])
+            return
 
     '''
         This method reassigns the replicas for the given partition. The algorithm for assignment is as follows:
