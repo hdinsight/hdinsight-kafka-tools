@@ -223,7 +223,7 @@ def parse_topo_info(cluster_topology_json, brokers_info, dead_hosts = None):
                 RACK: FAULT_DOMAIN_SHORT + str(node[FAULT_DOMAIN]) + UPDATE_DOMAIN_SHORT + str(node[UPDATE_DOMAIN]),
                 FREE_DISK_SPACE: 0
             }
-        host_info.append(host);
+            host_info.append(host);
     return host_info
 
 '''
