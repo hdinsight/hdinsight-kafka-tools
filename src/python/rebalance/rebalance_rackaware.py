@@ -213,7 +213,6 @@ def parse_topo_info(cluster_topology_json, brokers_info, dead_hosts = None):
     workernode_info = json.loads(cluster_topology_json)["hostGroups"]["workernode"]
     host_info = []
     for node in workernode_info:
-        logger.info("Checking  %s is part of %s", node[FQDN], dead_hosts)
         host = {
                 VM_ID: node[VM_ID],
                 FAULT_DOMAIN: str(node[FAULT_DOMAIN]),
@@ -604,8 +603,8 @@ class ReassignmentGenerator:
         if retList:
             return retList[0]
         else:
-            logger.error("Cannot retrieve host associated with broker with ID: %s", b_id)
-            return
+            logger.warn("Cannot retrieve host associated with broker with ID: %s", b_id)
+            return None
 
     def _get_count_replicas_in_broker(self, broker_id, broker_replica_count):
         retList = [element for element in broker_replica_count if element[BROKER_ID] == broker_id]
@@ -742,8 +741,12 @@ class ReassignmentGenerator:
         fd_list, ud_list = [], []
         for replica in partition[REPLICAS]:
             # Get the rack associated with the replica and add to list
-            current_FD = self._get_broker_info(int(replica))[FAULT_DOMAIN]
-            current_UD = self._get_broker_info(int(replica))[UPDATE_DOMAIN]
+            host = self._get_broker_info(int(replica))
+            # If host was removed from the rack the above will return null. In this case the partition is not balanced
+            if not host:
+                return False
+            current_FD = host[FAULT_DOMAIN]
+            current_UD = host[UPDATE_DOMAIN]
             fd_list.append(current_FD)
             ud_list.append(current_UD)
 
