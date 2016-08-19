@@ -213,8 +213,8 @@ def parse_topo_info(cluster_topology_json, brokers_info, dead_hosts = None):
     workernode_info = json.loads(cluster_topology_json)["hostGroups"]["workernode"]
     host_info = []
     for node in workernode_info:
-        if not node[FQDN] in dead_hosts:
-            host = {
+        logger.info("Checking  %s is part of %s", node[FQDN], dead_hosts)
+        host = {
                 VM_ID: node[VM_ID],
                 FAULT_DOMAIN: str(node[FAULT_DOMAIN]),
                 UPDATE_DOMAIN: str(node[UPDATE_DOMAIN]),
@@ -222,8 +222,12 @@ def parse_topo_info(cluster_topology_json, brokers_info, dead_hosts = None):
                 BROKER_ID: brokers_info[node[FQDN]] if node[FQDN] in brokers_info else None,
                 RACK: FAULT_DOMAIN_SHORT + str(node[FAULT_DOMAIN]) + UPDATE_DOMAIN_SHORT + str(node[UPDATE_DOMAIN]),
                 FREE_DISK_SPACE: 0
-            }
-            host_info.append(host);
+        }
+        if dead_hosts:
+            if not node[FQDN] in dead_hosts:
+                host_info.append(host)
+        else:
+            host_info.append(host)
     return host_info
 
 '''
@@ -920,11 +924,11 @@ def get_partition_sizes(fqdn):
 
 def main():
     parser = argparse.ArgumentParser(description='Rebalance Kafka Replicas! :)')
-    parser.add_argument('-topics', nargs='+', help='Comma separated list of topics to reassign replicas. Use ALL|all to rebalance all topics')
+    parser.add_argument('-topics', help='Comma separated list of topics to reassign replicas. Use ALL|all to rebalance all topics', type=str)
     parser.add_argument('--execute', action='store_true', default= False, help='whether or not to execute the reassignment plan')
     parser.add_argument('--verify', action='store_true', default=False, help='Execute rebalance of given plan and verify execution')
     parser.add_argument('--computeStorageCost', action='store_true', default=False, help='Use this for a non-new cluster to use compute free disk space per broker and partition sizes to determine the best reassignment plan. ')
-    parser.add_argument('-deadhosts', nargs='+', help='Comma separated list of hosts which have been removed from the cluster')
+    parser.add_argument('-deadhosts', help='Comma separated list of hosts which have been removed from the cluster', type=str)
     parser.add_argument('-username', help='Username for current user.')
     parser.add_argument('-password', help='Password for current user.')
     args = parser.parse_args()
@@ -946,6 +950,10 @@ def main():
     user_name = args.username
     global password
     password = args.password
+    dead_hosts = None
+
+    if args.deadhosts:
+        dead_hosts = [item for item in args.deadhosts.split(',')]
 
     if args.verify:
         reassign_verify()
@@ -961,6 +969,8 @@ def main():
 
     if topics[0].lower() == "all".lower():
         topics = get_topic_list()
+    else:
+        topics = [item for item in topics.split(',')]
 
     logger.info("Following topics selected: %s", str(topics))
 
@@ -969,7 +979,7 @@ def main():
     zookeeper_client = connect(zookeeper_quorum)
     # Get broker Ids to Hosts mapping
     brokers_info = get_brokerhost_info(zookeeper_client)
-    reassignment_plan = generate_reassignment_plan(topics, brokers_info, compute_storage_cost, args.deadhosts)
+    reassignment_plan = generate_reassignment_plan(topics, brokers_info, compute_storage_cost, dead_hosts)
 
     if reassignment_plan is None:
         logger.info("No need to rebalance. Current Kafka replica assignment has High Availability OR minimum requirements for rebalance not met. Check logs at %s for more info.", str(log_dir) + str(log_file))
