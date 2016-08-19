@@ -208,11 +208,12 @@ host_info = [
     },
 ]
 '''
-def parse_topo_info(cluster_topology_json, brokers_info):
+def parse_topo_info(cluster_topology_json, brokers_info, dead_hosts = None):
     logger.info("Parsing topology info to retrieve information about hosts.")
     workernode_info = json.loads(cluster_topology_json)["hostGroups"]["workernode"]
     host_info = []
     for node in workernode_info:
+        if not node[FQDN] in dead_hosts:
         host = {
             VM_ID: node[VM_ID],
             FAULT_DOMAIN: str(node[FAULT_DOMAIN]),
@@ -350,8 +351,8 @@ def generate_fd_list_ud_list(host_info):
 def check_brokers_up(host_info):
     for host in host_info:
         if not host[BROKER_ID]:
-            logger.warning("VM %s with FQDN: %s has no brokers assigned. Ensure that all brokers are up! It is not recommended to perform replica rebalance when brokers are down.", host[VM_ID], host[FQDN])
-            return True
+            logger.error("VM %s with FQDN: %s has no brokers assigned. Ensure that all brokers are up! It is not recommended to perform replica rebalance when brokers are down.", host[VM_ID], host[FQDN])
+            return
     return True
 
 '''
@@ -426,13 +427,13 @@ Sample Cluster Topology JSON:
     }
 }
 '''
-def generate_reassignment_plan(topics, brokers_info, compute_storage_cost = False):
+def generate_reassignment_plan(topics, brokers_info, compute_storage_cost = False, dead_hosts = None):
     logger.info("Starting tool execution...")
     ret = None
     # Retrieve Cluster topology
     cluster_topology_json = get_cluster_topology_json()
     # Parse JSON to retrieve information about hosts
-    host_info = parse_topo_info(cluster_topology_json, brokers_info)
+    host_info = parse_topo_info(cluster_topology_json, brokers_info, dead_hosts)
     partitions_sizes = []
     if compute_storage_cost:
         partitions_sizes = get_storage_info(host_info)
@@ -923,6 +924,7 @@ def main():
     parser.add_argument('--execute', action='store_true', default= False, help='whether or not to execute the reassignment plan')
     parser.add_argument('--verify', action='store_true', default=False, help='Execute rebalance of given plan and verify execution')
     parser.add_argument('--computeStorageCost', action='store_true', default=False, help='Use this for a non-new cluster to use compute free disk space per broker and partition sizes to determine the best reassignment plan. ')
+    parser.add_argument('-deadhosts', nargs='+', help='Comma separated list of hosts which have been removed from the cluster')
     parser.add_argument('-username', help='Username for current user.')
     parser.add_argument('-password', help='Password for current user.')
     args = parser.parse_args()
@@ -967,7 +969,7 @@ def main():
     zookeeper_client = connect(zookeeper_quorum)
     # Get broker Ids to Hosts mapping
     brokers_info = get_brokerhost_info(zookeeper_client)
-    reassignment_plan = generate_reassignment_plan(topics, brokers_info, compute_storage_cost)
+    reassignment_plan = generate_reassignment_plan(topics, brokers_info, compute_storage_cost, args.deadhosts)
 
     if reassignment_plan is None:
         logger.info("No need to rebalance. Current Kafka replica assignment has High Availability OR minimum requirements for rebalance not met. Check logs at %s for more info.", str(log_dir) + str(log_file))

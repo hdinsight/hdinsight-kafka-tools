@@ -269,7 +269,7 @@ class RebalanceTests(unittest.TestCase):
         rgen = rebalance_rackaware.ReassignmentGenerator(host_info, self.dummy_topic, partitions_info, self.compute_storage_cost)
         fd_ud_list, fd_list, ud_list = self.generate_fd_ud_list(3,3)
         alternated_list = rgen._generate_alternated_fd_ud_list(fd_ud_list, fd_list, ud_list)
-        reassignment_plan, balanced_partitions = rgen._generate_reassignment_plan_for_topic(3,0,alternated_list,3,3,brokers_replica_count)
+        reassignment_plan, balanced_partitions = rgen._generate_reassignment_plan_for_topic(3,0,alternated_list,3,3,brokers_replica_count, None)
         topic_balanced = rgen._verify_reassignment_plan(reassignment_plan,self.dummy_topic,3,3,3)
         self.assertTrue(topic_balanced)
 
