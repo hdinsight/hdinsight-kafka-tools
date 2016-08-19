@@ -604,7 +604,7 @@ class ReassignmentGenerator:
         if retList:
             return retList[0]
         else:
-            logger.error("Cannot retrieve host associated with broker with ID: %s", BROKER_ID)
+            logger.error("Cannot retrieve host associated with broker with ID: %s", b_id)
             return
 
     def _get_count_replicas_in_broker(self, broker_id, broker_replica_count):
