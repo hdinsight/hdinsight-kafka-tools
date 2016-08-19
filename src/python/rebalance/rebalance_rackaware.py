@@ -214,15 +214,15 @@ def parse_topo_info(cluster_topology_json, brokers_info, dead_hosts = None):
     host_info = []
     for node in workernode_info:
         if not node[FQDN] in dead_hosts:
-        host = {
-            VM_ID: node[VM_ID],
-            FAULT_DOMAIN: str(node[FAULT_DOMAIN]),
-            UPDATE_DOMAIN: str(node[UPDATE_DOMAIN]),
-            FQDN: node[FQDN],
-            BROKER_ID: brokers_info[node[FQDN]] if node[FQDN] in brokers_info else None,
-            RACK: FAULT_DOMAIN_SHORT + str(node[FAULT_DOMAIN]) + UPDATE_DOMAIN_SHORT + str(node[UPDATE_DOMAIN]),
-            FREE_DISK_SPACE: 0
-        }
+            host = {
+                VM_ID: node[VM_ID],
+                FAULT_DOMAIN: str(node[FAULT_DOMAIN]),
+                UPDATE_DOMAIN: str(node[UPDATE_DOMAIN]),
+                FQDN: node[FQDN],
+                BROKER_ID: brokers_info[node[FQDN]] if node[FQDN] in brokers_info else None,
+                RACK: FAULT_DOMAIN_SHORT + str(node[FAULT_DOMAIN]) + UPDATE_DOMAIN_SHORT + str(node[UPDATE_DOMAIN]),
+                FREE_DISK_SPACE: 0
+            }
         host_info.append(host);
     return host_info
 
