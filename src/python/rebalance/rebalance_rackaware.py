@@ -17,7 +17,7 @@ RUNNING THE SCRIPT:
 sudo python rebalance_new.py
 '''
 
-import logging, sys, json, subprocess, os.path, errno, traceback, argparse, requests, os, re, time, tempfile, pexpect
+import logging, sys, json, subprocess, os.path, errno, traceback, argparse, requests, os, re, time, tempfile, pexpect, random
 from retry import retry
 from operator import itemgetter
 from logging import StreamHandler
@@ -447,8 +447,6 @@ def generate_reassignment_plan(topics, brokers_info, compute_storage_cost = Fals
 
     logger.info("Checking if all brokers are up.")
     if check_brokers_up(host_info):
-        # Variables to keep track of which rack in the alternated list is the next one to be assigned a replica.
-        next_Leader = 0
 
         # Keep track of number of replicas we assign to each broker. This count is across all topics
         brokers_replica_count = []
@@ -481,6 +479,14 @@ def generate_reassignment_plan(topics, brokers_info, compute_storage_cost = Fals
             fd_ud_list = rassignment_Generator._generate_fd_ud_list()
             rack_alternated_list = rassignment_Generator._generate_alternated_fd_ud_list(fd_ud_list, fd_list, ud_list)
             logger.debug("Generated Rack alternated list: %s", str(rack_alternated_list))
+
+            # Variables to keep track of which rack in the alternated list is the next one to be assigned a replica. 
+            rand_rack = random.randrange(0, len(rack_alternated_list))
+            logger.debug("Rand_rack: %s", str(rand_rack))
+            next_Leader = (int(len(ud_list)) * rand_rack) % len(rack_alternated_list)
+
+            logger.debug("Start with position in Rack Alternated List: %s", str(next_Leader))
+
             reassignment_plan, balanced_partitions_for_topic = rassignment_Generator._generate_reassignment_plan_for_topic(replica_count_topic, next_Leader, rack_alternated_list, fd_count, ud_count, brokers_replica_count)
             logger.debug("Already balanced partitions for the topic %s are: %s", topic, balanced_partitions_for_topic)
 
@@ -636,7 +642,7 @@ class ReassignmentGenerator:
         Determines the rack (FD+UD combination) for the replica. Once determined, there could be multiple brokers that meet the criteria. We choose the broker which has less number of replicas assigned to it. (distribute the load)
     '''
     def _assign_replica_for_partition(self, rack_alternated_list, broker_replica_count, next_rack, type_of_replica):
-
+    
         eligible_brokers = self._get_brokers_in_rack(rack_alternated_list[next_rack])
         if eligible_brokers:
             new_broker = eligible_brokers[0]
@@ -691,7 +697,7 @@ class ReassignmentGenerator:
             if leaders_in_current_rack < current_min:
                 current_min = leaders_in_current_rack
                 relative_rack_index = i
-        rack_index = start_index + relative_rack_index
+        rack_index = (start_index + relative_rack_index) % rack_count
 
         # Do the actual assignment of leader
         leader_broker_id = self._assign_replica_for_partition(rack_alternated_list, brokers_replica_count, rack_index, LEADERS)
@@ -969,8 +975,8 @@ def main():
     if topics is None:
         logger.info("Pleae specify topics to rebalance using --topics. Use ALL to rebalance all topics.")
         sys.exit()
-
-    if topics[0].lower() == "all".lower():
+    
+    if topics.lower() == "all".lower():
         topics = get_topic_list()
     else:
         topics = [item for item in topics.split(',')]
