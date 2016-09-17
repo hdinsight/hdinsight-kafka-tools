@@ -72,200 +72,22 @@
     "variables": {
         "defaultApiVersion": "2015-06-15",
         "clusterApiVersion": "2015-03-01-preview",
+        "defaultStorageName": "[concat('store', uniqueString(resourceGroup().id))]",
+        "storageType": "Standard_LRS",
         "virtualNetworkName": "[concat('vnet', uniqueString(resourceGroup().id))]",
         "virtualNetworkPrefix": "10.0.0.0/16",
         "virtualNetworkSubnet1Name": "Subnet-1",
-        "virtualNetworkSubnet1Prefix": "10.0.0.0/24",
-        "storageType": "Standard_LRS",
-        "00storageName": "[concat('000kafka', uniqueString(resourceGroup().id))]",
-        "01storageName": "[concat('a01kafka', uniqueString(resourceGroup().id))]",
-        "02storageName": "[concat('b02kafka', uniqueString(resourceGroup().id))]",
-        "03storageName": "[concat('c03kafka', uniqueString(resourceGroup().id))]",
-        "04storageName": "[concat('d04kafka', uniqueString(resourceGroup().id))]",
-        "05storageName": "[concat('e05kafka', uniqueString(resourceGroup().id))]",
-        "06storageName": "[concat('f06kafka', uniqueString(resourceGroup().id))]",
-        "07storageName": "[concat('g07kafka', uniqueString(resourceGroup().id))]",
-        "08storageName": "[concat('h08kafka', uniqueString(resourceGroup().id))]",
-        "09storageName": "[concat('i09kafka', uniqueString(resourceGroup().id))]",
-        "10storageName": "[concat('j10kafka', uniqueString(resourceGroup().id))]",
-        "11storageName": "[concat('k11kafka', uniqueString(resourceGroup().id))]",
-        "12storageName": "[concat('l12kafka', uniqueString(resourceGroup().id))]",
-        "13storageName": "[concat('m13kafka', uniqueString(resourceGroup().id))]",
-        "14storageName": "[concat('n14kafka', uniqueString(resourceGroup().id))]",
-        "15storageName": "[concat('o15kafka', uniqueString(resourceGroup().id))]",
-        "16storageName": "[concat('p16kafka', uniqueString(resourceGroup().id))]",
-        "17storageName": "[concat('q17kafka', uniqueString(resourceGroup().id))]",
-        "18storageName": "[concat('r18kafka', uniqueString(resourceGroup().id))]",
-        "19storageName": "[concat('s19kafka', uniqueString(resourceGroup().id))]",
-        "20storageName": "[concat('t20kafka', uniqueString(resourceGroup().id))]",
-        "21storageName": "[concat('u21kafka', uniqueString(resourceGroup().id))]",
-        "22storageName": "[concat('v22kafka', uniqueString(resourceGroup().id))]",
-        "23storageName": "[concat('w23kafka', uniqueString(resourceGroup().id))]",
-        "24storageName": "[concat('x24kafka', uniqueString(resourceGroup().id))]",
-        "25storageName": "[concat('y25kafka', uniqueString(resourceGroup().id))]",
-        "26storageName": "[concat('z26kafka', uniqueString(resourceGroup().id))]",
-        "27storageName": "[concat('a27kafka', uniqueString(resourceGroup().id))]",
-        "28storageName": "[concat('b28kafka', uniqueString(resourceGroup().id))]",
-        "29storageName": "[concat('c29kafka', uniqueString(resourceGroup().id))]",
-        "30storageName": "[concat('d30kafka', uniqueString(resourceGroup().id))]",
-        "31storageName": "[concat('e31kafka', uniqueString(resourceGroup().id))]",
-        "32storageName": "[concat('f32kafka', uniqueString(resourceGroup().id))]",
-        "33storageName": "[concat('g33kafka', uniqueString(resourceGroup().id))]",
-        "34storageName": "[concat('h34kafka', uniqueString(resourceGroup().id))]",
-        "35storageName": "[concat('j35kafka', uniqueString(resourceGroup().id))]",
-        "36storageName": "[concat('k36kafka', uniqueString(resourceGroup().id))]",
-        "37storageName": "[concat('l37kafka', uniqueString(resourceGroup().id))]",
-        "38storageName": "[concat('m38kafka', uniqueString(resourceGroup().id))]",
-        "39storageName": "[concat('n39kafka', uniqueString(resourceGroup().id))]",
-        "40storageName": "[concat('o40kafka', uniqueString(resourceGroup().id))]",
-        "41storageName": "[concat('p41kafka', uniqueString(resourceGroup().id))]",
-        "42storageName": "[concat('q42kafka', uniqueString(resourceGroup().id))]",
-        "43storageName": "[concat('r43kafka', uniqueString(resourceGroup().id))]",
-        "44storageName": "[concat('s44kafka', uniqueString(resourceGroup().id))]",
-        "45storageName": "[concat('t45kafka', uniqueString(resourceGroup().id))]",
-        "46storageName": "[concat('u46kafka', uniqueString(resourceGroup().id))]",
-        "47storageName": "[concat('v47kafka', uniqueString(resourceGroup().id))]",
-        "48storageName": "[concat('w48kafka', uniqueString(resourceGroup().id))]"
+        "virtualNetworkSubnet1Prefix": "10.0.0.0/24"
     },
     "resources": [
         {
-            "name": "[variables('00storageName')]",
+            "name": "[variables('defaultStorageName')]",
             "type": "Microsoft.Storage/storageAccounts",
             "location": "[resourceGroup().location]",
             "apiVersion": "2015-06-15",
             "dependsOn": [ ],
             "tags": {
-                "displayName": "00clusterStorage"
-            },
-            "properties": {
-                "accountType": "[variables('storageType')]"
-            }
-        },
-        {
-            "name": "[variables('01storageName')]",
-            "type": "Microsoft.Storage/storageAccounts",
-            "location": "[resourceGroup().location]",
-            "apiVersion": "2015-06-15",
-            "dependsOn": [ ],
-            "tags": {
-                "displayName": "01clusterStorage"
-            },
-            "properties": {
-                "accountType": "[variables('storageType')]"
-            }
-        },
-        {
-            "name": "[variables('02storageName')]",
-            "type": "Microsoft.Storage/storageAccounts",
-            "location": "[resourceGroup().location]",
-            "apiVersion": "2015-06-15",
-            "dependsOn": [ ],
-            "tags": {
-                "displayName": "02clusterStorage"
-            },
-            "properties": {
-                "accountType": "[variables('storageType')]"
-            }
-        },
-        {
-            "name": "[variables('03storageName')]",
-            "type": "Microsoft.Storage/storageAccounts",
-            "location": "[resourceGroup().location]",
-            "apiVersion": "2015-06-15",
-            "dependsOn": [ ],
-            "tags": {
-                "displayName": "03clusterStorage"
-            },
-            "properties": {
-                "accountType": "[variables('storageType')]"
-            }
-        },
-        {
-            "name": "[variables('04storageName')]",
-            "type": "Microsoft.Storage/storageAccounts",
-            "location": "[resourceGroup().location]",
-            "apiVersion": "2015-06-15",
-            "dependsOn": [ ],
-            "tags": {
-                "displayName": "04clusterStorage"
-            },
-            "properties": {
-                "accountType": "[variables('storageType')]"
-            }
-        },
-        {
-            "name": "[variables('05storageName')]",
-            "type": "Microsoft.Storage/storageAccounts",
-            "location": "[resourceGroup().location]",
-            "apiVersion": "2015-06-15",
-            "dependsOn": [ ],
-            "tags": {
-                "displayName": "05clusterStorage"
-            },
-            "properties": {
-                "accountType": "[variables('storageType')]"
-            }
-        },
-        {
-            "name": "[variables('06storageName')]",
-            "type": "Microsoft.Storage/storageAccounts",
-            "location": "[resourceGroup().location]",
-            "apiVersion": "2015-06-15",
-            "dependsOn": [ ],
-            "tags": {
-                "displayName": "06clusterStorage"
-            },
-            "properties": {
-                "accountType": "[variables('storageType')]"
-            }
-        },
-        {
-            "name": "[variables('07storageName')]",
-            "type": "Microsoft.Storage/storageAccounts",
-            "location": "[resourceGroup().location]",
-            "apiVersion": "2015-06-15",
-            "dependsOn": [ ],
-            "tags": {
-                "displayName": "07clusterStorage"
-            },
-            "properties": {
-                "accountType": "[variables('storageType')]"
-            }
-        },
-        {
-            "name": "[variables('08storageName')]",
-            "type": "Microsoft.Storage/storageAccounts",
-            "location": "[resourceGroup().location]",
-            "apiVersion": "2015-06-15",
-            "dependsOn": [ ],
-            "tags": {
-                "displayName": "08clusterStorage"
-            },
-            "properties": {
-                "accountType": "[variables('storageType')]"
-            }
-        },
-        {
-            "name": "[variables('09storageName')]",
-            "type": "Microsoft.Storage/storageAccounts",
-            "location": "[resourceGroup().location]",
-            "apiVersion": "2015-06-15",
-            "dependsOn": [ ],
-            "tags": {
-                "displayName": "09clusterStorage"
-            },
-            "properties": {
-                "accountType": "[variables('storageType')]"
-            }
-        },
-        {
-            "name": "[variables('10storageName')]",
-            "type": "Microsoft.Storage/storageAccounts",
-            "location": "[resourceGroup().location]",
-            "apiVersion": "2015-06-15",
-            "dependsOn": [ ],
-            "tags": {
-                "displayName": "10clusterStorage"
+                "displayName": "defaultStorageName"
             },
             "properties": {
                 "accountType": "[variables('storageType')]"
@@ -317,51 +139,11 @@
                 "storageProfile": {
                     "storageaccounts": [
                         {
-                            "name": "[concat(variables('00storageName'),'.blob.core.windows.net')]",
+                            "name": "[concat(variables('defaultStorageName'),'.blob.core.windows.net')]",
                             "isDefault": true,
                             "container": "[parameters('clusterName')]",
-                            "key": "[listKeys(resourceId('Microsoft.Storage/storageAccounts', variables('00storageName')), variables('defaultApiVersion')).key1]"
-                        },
-                        {
-                            "name": "[concat(variables('01storageName'),'.blob.core.windows.net')]",
-                            "key": "[listKeys(resourceId('Microsoft.Storage/storageAccounts', variables('01storageName')), variables('defaultApiVersion')).key1]"
-                        },
-                        {
-                            "name": "[concat(variables('02storageName'),'.blob.core.windows.net')]",
-                            "key": "[listKeys(resourceId('Microsoft.Storage/storageAccounts', variables('02storageName')), variables('defaultApiVersion')).key1]"
-                        },
-                        {
-                            "name": "[concat(variables('03storageName'),'.blob.core.windows.net')]",
-                            "key": "[listKeys(resourceId('Microsoft.Storage/storageAccounts', variables('03storageName')), variables('defaultApiVersion')).key1]"
-                        },
-                        {
-                            "name": "[concat(variables('04storageName'),'.blob.core.windows.net')]",
-                            "key": "[listKeys(resourceId('Microsoft.Storage/storageAccounts', variables('04storageName')), variables('defaultApiVersion')).key1]"
-                        },
-                        {
-                            "name": "[concat(variables('05storageName'),'.blob.core.windows.net')]",
-                            "key": "[listKeys(resourceId('Microsoft.Storage/storageAccounts', variables('05storageName')), variables('defaultApiVersion')).key1]"
-                        },
-                        {
-                            "name": "[concat(variables('06storageName'),'.blob.core.windows.net')]",
-                            "key": "[listKeys(resourceId('Microsoft.Storage/storageAccounts', variables('06storageName')), variables('defaultApiVersion')).key1]"
-                        },
-                        {
-                            "name": "[concat(variables('07storageName'),'.blob.core.windows.net')]",
-                            "key": "[listKeys(resourceId('Microsoft.Storage/storageAccounts', variables('07storageName')), variables('defaultApiVersion')).key1]"
-                        },
-                        {
-                            "name": "[concat(variables('08storageName'),'.blob.core.windows.net')]",
-                            "key": "[listKeys(resourceId('Microsoft.Storage/storageAccounts', variables('08storageName')), variables('defaultApiVersion')).key1]"
-                        },
-                        {
-                            "name": "[concat(variables('09storageName'),'.blob.core.windows.net')]",
-                            "key": "[listKeys(resourceId('Microsoft.Storage/storageAccounts', variables('09storageName')), variables('defaultApiVersion')).key1]"
-                        },
-                        {
-                            "name": "[concat(variables('10storageName'),'.blob.core.windows.net')]",
-                            "key": "[listKeys(resourceId('Microsoft.Storage/storageAccounts', variables('10storageName')), variables('defaultApiVersion')).key1]"
-                        },
+                            "key": "[listKeys(resourceId('Microsoft.Storage/storageAccounts', variables('defaultStorageName')), variables('defaultApiVersion')).key1]"
+                        }
                     ]
                 },
                 "computeProfile": {
@@ -421,17 +203,6 @@
                 }
             },
             "dependsOn": [
-                "[variables('00storageName')]",
-                "[variables('01storageName')]",
-                "[variables('02storageName')]",
-                "[variables('03storageName')]",
-                "[variables('04storageName')]",
-                "[variables('05storageName')]",
-                "[variables('06storageName')]",
-                "[variables('07storageName')]",
-                "[variables('08storageName')]",
-                "[variables('09storageName')]",
-                "[variables('10storageName')]",
                 "[variables('virtualNetworkName')]"
             ]
         }
