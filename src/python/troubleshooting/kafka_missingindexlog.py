@@ -56,5 +56,5 @@ def main(ktu):
             os.remove(delete)
 
 if __name__ == '__main__':
-    ktu = KafkaTestUtils(logger, 'missinglogindex{0}'.format(int(time.time())) + '.log')
+    ktu = KafkaTestUtils(logger, 'kafkamissinglogindex{0}'.format(int(time.time())) + '.log')
     main(ktu)

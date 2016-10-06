@@ -25,6 +25,8 @@ def main(ktu):
             ssh_key_file = ssh_password
         elif os.path.exists(os.path.join(script_dir, ssh_password)):
             ssh_key_file = os.path.join(script_dir, ssh_password)
+    else:
+        sys.exit("Please specify the ssh password or the ssh keyfile to use to patch all worker nodes.")
 
     if os.path.exists(ssh_key_file):
         logger.info('ssh_key_file = ' + ssh_key_file)
@@ -34,7 +36,6 @@ def main(ktu):
         logger.info('ssh_password = ' + ssh_password)
         ssh_password_param = 'sshpass -p {0} '.format(ssh_password)
         stdout, stderr = ktu.runShellCommand('sudo apt-get install sshpass')
-
 
     zookeepers, broker_hosts, brokers = ktu.getBrokerInformation()
     errored_brokers = []

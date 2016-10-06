@@ -1,8 +1,12 @@
 ﻿import logging, subprocess, time, sys
+from retry import retry
 
 from hdinsight_common.AmbariHelper import AmbariHelper
 from hdinsight_common import Constants
-from hdinsight_kafka.kafka_remote_storage import KafkaRemoteStorage
+
+from kazoo.client import KazooClient
+from kazoo.client import KazooState
+from kazoo.protocol.states import EventType
 
 class KafkaTestUtils:
     def __init__(self, logger, log_file, debug = False):
@@ -50,7 +54,7 @@ class KafkaTestUtils:
         hosts_result = ambari_helper.query_url('clusters/{0}/hosts'.format(cluster_name))
 
         zookeepers = reduce(lambda r1,r2 : r1 + ',' + r2,
-                        map(lambda m : m['Hosts']['host_name'] + ':' + Constants.ZOOKEEPER_CLIENT_PORT,
+                        map(lambda m : m['Hosts']['host_name'] + ':2181',
                             filter(lambda h:h['Hosts']['host_name'].startswith(cluster_manifest.settings[Constants.ZOOKEEPER_VM_NAME_PREFIX_SETTING_KEY]),
                                 hosts_result['items'])))
         self.logger.info("zookeepers: {0}\n".format(zookeepers))
@@ -92,7 +96,14 @@ class KafkaTestUtils:
     
         return zookeepers, brokers, partitions, replicationfactor, messages, threads, messagesize, batchsize
 
-    def getShareNames(self):
-        kfr = KafkaRemoteStorage()
-        data = kfr.get_kafka_remote_storage_map()
-        return map(lambda k:k, data['kafkaRemoteStorageMap']['0']['azureFileShareMap'])
+    def connection_lost(self, state):
+        if state == KazooState.LOST or state == KazooState.SUSPENDED:
+            raise RuntimeError("Fatal error lost connection to zookeeper.")
+
+    @retry(exceptions=BaseException, tries=3, delay=1, backoff=2)
+    def connect(self, zk_quorum):
+        self.logger.info('Connecting to zookeeper quorum at: {0}'.format(zk_quorum))
+        zk = KazooClient(hosts=zk_quorum)
+        zk.start()
+        zk.add_listener(self.connection_lost)
+        return zk

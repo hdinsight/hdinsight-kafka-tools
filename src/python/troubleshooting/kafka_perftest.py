@@ -44,6 +44,6 @@ def main(ktu, topic):
     ktu.runShellCommand(shell_command)
 
 if __name__ == '__main__':
-    topic="eventcounttest{0}".format(int(time.time()))
+    topic="kafkaperftest{0}".format(int(time.time()))
     ktu = KafkaTestUtils(logger, topic + ".log", debug)
     main(ktu, topic)
