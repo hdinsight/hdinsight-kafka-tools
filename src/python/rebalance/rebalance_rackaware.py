@@ -5,7 +5,7 @@ Rebelance can be executed for one or more topics.
 
 PRE-REQS:
 =========
-sudo apt-get install libffi-dev libssl-dev
+sudo apt-get install -y libffi-dev libssl-dev
 sudo pip install --upgrade requests[security] PyOpenSSL ndg-httpsclient pyasn1 kazoo retry pexpect
 
 RUNNING THE SCRIPT:
@@ -116,8 +116,10 @@ ASSIGNMENT_JSON_FILE = "/tmp/kafka_rebalance/rebalancePlan.json"
 ZOOKEEPER_PORT = ":2181"
 ZOOKEEPER_HOSTS = None
 BROKERS_ID_PATH = "brokers/ids"
-KAFKA_TOPICS_TOOL = "/kafka-topics.sh"
-KAFKA_REASSIGN_PARTITIONS_TOOL = "/kafka-reassign-partitions.sh"
+KAFKA_HOME = "/usr/hdp/current/kafka-broker/"
+KAFKA_LIBS_PATH = KAFKA_HOME + "libs/"
+KAFKA_TOPICS_TOOL_PATH = KAFKA_HOME + "bin/kafka-topics.sh"
+KAFKA_REASSIGN_PARTITIONS_TOOL_PATH = KAFKA_HOME + "bin/kafka-reassign-partitions.sh"
 FQDN = "fqdn"
 BROKER_ID = "brokerId"
 FAULT_DOMAIN = "faultDomain"
@@ -273,7 +275,7 @@ Return format: partitions_info = [
     ...
 ]
 '''
-def get_partition_info(topicInfo_lines, partition_sizes, topic):
+def get_partition_info(topic, topicInfo_lines, partition_sizes):
     logger.info("Retrieving partition information for topic: %s", topic)
     partitions_info = []
     for i in range(1, len(topicInfo_lines)):
@@ -472,7 +474,7 @@ def generate_reassignment_plan(topics, brokers_info, compute_storage_cost = Fals
             if len(topicInfo_lines) < 2:
                 raise Exception("Failed to parse Kafka topic info for topic: %s", topic)
 
-            partition_info = get_partition_info(topicInfo_lines, partitions_sizes, topic)
+            partition_info = get_partition_info(topic, topicInfo_lines, partitions_sizes)
             logger.debug("Partition info for topic %s : %s", topic, str(partition_info))
             rassignment_Generator = ReassignmentGenerator(host_info, topic, partition_info, compute_storage_cost)
             # Generate Rack alternated list
@@ -865,10 +867,10 @@ def reassign_exec():
     Log Kafka and HDP Version
 '''
 def get_kafka_hdp_version():
-    p1 = subprocess.Popen(["find ../libs/ -name \*kafka_\*"], shell=True, stdout=subprocess.PIPE)
+    p1 = subprocess.Popen(["find {0} -name \*kafka_\*".format(KAFKA_LIBS_PATH)], shell=True, stdout=subprocess.PIPE)
     data = p1.stdout.readline()
     assert p1.wait() == 0
-    data = data.split('\n')[0].split('-')
+    data = data.split('\n')[0].split('/')[-1].split('-')
     splits = data[1].split('.')
     kafka_version = splits[0] + "." + splits[1] + "." + splits[2]
 
@@ -942,16 +944,9 @@ def main():
     parser.add_argument('-password', help='Password for current user.')
     args = parser.parse_args()
 
-    script_directory = os.path.dirname(os.path.abspath(__file__))
-    logger.info("Script exceuted from: %s", script_directory)
     kafka_version, hdp_version = get_kafka_hdp_version()
     logger.info("Kafka Version: %s", kafka_version)
     logger.info("HDP Version: %s", hdp_version)
-
-    global KAFKA_TOPICS_TOOL_PATH
-    KAFKA_TOPICS_TOOL_PATH = script_directory + KAFKA_TOPICS_TOOL
-    global KAFKA_REASSIGN_PARTITIONS_TOOL_PATH
-    KAFKA_REASSIGN_PARTITIONS_TOOL_PATH = script_directory + KAFKA_REASSIGN_PARTITIONS_TOOL
 
     topics = args.topics
     compute_storage_cost = args.computeStorageCost
