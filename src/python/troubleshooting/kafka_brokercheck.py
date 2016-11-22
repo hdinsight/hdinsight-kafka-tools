@@ -6,6 +6,7 @@ logger = logging.getLogger(__name__)
 debug = False
 
 brokers_ids_path = 'brokers/ids'
+kafka_getpidstatus_script = os.path.dirname(os.path.realpath(__file__)) + os.sep + 'kafka_getpidstatus.py'
 
 def main(ktu):
     ssh_username = ''
@@ -99,13 +100,11 @@ def main(ktu):
 
     if len(sys.argv) > 1:
         logger.info('\n==================================\nGetting Kafka pid statuses\n==================================\n')
-        for kase_broker_host in kase_broker_hosts:
-            broker_host = kase_broker_hosts[kase_broker_host].split(',', 1)[0]
+        for broker_host in broker_hosts:
             logger.info('\nBroker host: {0}\n-----------------------------------'.format(broker_host))
             try:
                 cmd ='python -'
-                #cmd ='sudo ps -f \$(cat /var/run/kafka/kafka.pid)'
-                stdout, stderr = ktu.runShellCommand('cat get_kafkapidstatus.py | {0}ssh {1} -o StrictHostKeyChecking=no {2}@{3} "{4}"'
+                stdout, stderr = ktu.runShellCommand('cat ' + kafka_getpidstatus_script + ' | {0}ssh {1} -o StrictHostKeyChecking=no {2}@{3} "{4}"'
                                                      .format(ssh_password_param, ssh_key_param, ssh_username, broker_host, cmd))
             except:
                 logger.error(traceback.print_exc())
@@ -114,15 +113,15 @@ def main(ktu):
         if len(dead_broker_hosts) > 0:
             logger.info('\n==================================\nGetting dead brokers reasons\n==================================\n')
             for dead_broker_host in dead_broker_hosts:
-                broker_host = dead_broker_hosts[dead_broker_host].split(',', 1)[0]
+                broker_host = dead_broker_hosts[dead_broker_host]
                 logger.info('\nDead broker host: {0}\n-----------------------------------'.format(broker_host))
                 try:
-                    cmd ='sudo tail -n 30 /var/log/kafka/kafka.out'
+                    cmd ='sudo tail -n 30 /var/log/kafka/server.log'
                     stdout, stderr = ktu.runShellCommand('{0}ssh {1} -o StrictHostKeyChecking=no {2}@{3} "{4}"'
                                                          .format(ssh_password_param, ssh_key_param, ssh_username, broker_host, cmd))
                 except:
                     logger.error(traceback.print_exc())
-                    logger.error('Failed to get kafka out messages.'.format(broker_host))
+                    logger.error('Failed to get kafka server log messages.'.format(broker_host))
                     logger.info('\n---------------------------------\n'.format(broker_host))
         logger.info('\n==================================\n'.format(broker_host))
 
