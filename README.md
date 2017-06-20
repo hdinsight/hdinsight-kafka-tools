@@ -42,9 +42,6 @@ optional arguments:
                         Use ALL|all to rebalance all topics
   --execute             whether or not to execute the reassignment plan
   --verify              Verify status of reassignment operation
-  --computeStorageCost  Use this for a non-new cluster to compute free
-                        disk space per broker and partition sizes to determine
-                        the best reassignment plan.
   -username USERNAME    Username for current user. Required for computing storage details.
   -password PASSWORD    Password for current user. Required for computing storage details.
 ```
@@ -55,7 +52,7 @@ Without "--execute" this tool only scans the current assignment generates the re
 
 #### Generate reassignment plan for all topics on cluster:
 
-```sudo python rebalance_rackaware.py -topics ALL -username $USERNAME -password $PASSWORD --computeStorageCost```
+```sudo python rebalance_rackaware.py -topics ALL -username $USERNAME -password $PASSWORD```
 
 The plan will be saved at /tmp/kafka_rebalance/rebalancePlan.json
 
