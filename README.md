@@ -42,6 +42,8 @@ optional arguments:
                         Use ALL|all to rebalance all topics
   --execute             whether or not to execute the reassignment plan
   --verify              Verify status of reassignment operation
+  --force               Force rebalance of all partitions in a topic, even if already balanaced.
+  -throttle             Upper bound on bandwidth used to move replicas from machine to machine.
   -username USERNAME    Username for current user. Required for computing storage details.
   -password PASSWORD    Password for current user. Required for computing storage details.
 ```

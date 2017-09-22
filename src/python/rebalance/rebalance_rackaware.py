@@ -941,7 +941,7 @@ def main():
     parser.add_argument('--execute', action='store_true', default= False, help='whether or not to execute the reassignment plan')
     parser.add_argument('--verify', action='store_true', default=False, help='Execute rebalance of given plan and verify execution')
     parser.add_argument('--force', action='store_true', default=False, help='Force rebalance of all partitions in a topic, even if already balanaced.')
-    parser.add_argument('--throttle', help='Upper bound on bandwidth used to move replicas from machine to machine.')
+    parser.add_argument('-throttle', help='Upper bound on bandwidth used to move replicas from machine to machine.')
     parser.add_argument('--computeStorageCost', action='store_true', default=False, help='Use this for a non-new cluster to use compute free disk space per broker and partition sizes to determine the best reassignment plan. ')
     parser.add_argument('-deadhosts', help='Comma separated list of hosts which have been removed from the cluster', type=str)
     parser.add_argument('-username', help='Username for current user.')
