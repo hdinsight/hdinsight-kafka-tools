@@ -1001,3 +1001,4 @@ def main():
 if __name__ == "__main__":
     initialize_logger(logger, log_file)
     main()
+    
