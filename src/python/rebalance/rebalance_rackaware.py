@@ -138,6 +138,7 @@ ISR = "isr"
 FREE_DISK_SPACE = "fds"
 PARTITION_SIZE = "partition_size"
 ASSIGNED = "assigned"
+DEFAULT_REBALANCE_THROTTLE_RATE_BPS = "50000000"
 
 '''
 Get information of Zookeeper Hosts
@@ -432,7 +433,7 @@ Sample Cluster Topology JSON:
     }
 }
 '''
-def generate_reassignment_plan(topics, brokers_info, compute_storage_cost = False, dead_hosts = None):
+def generate_reassignment_plan(topics, brokers_info, compute_storage_cost = False, dead_hosts = None, force_rebalance = False):
     logger.info("Starting tool execution...")
     ret = None
     # Retrieve Cluster topology
@@ -489,7 +490,7 @@ def generate_reassignment_plan(topics, brokers_info, compute_storage_cost = Fals
 
             logger.debug("Start with position in Rack Alternated List: %s", str(next_Leader))
 
-            reassignment_plan, balanced_partitions_for_topic = rassignment_Generator._generate_reassignment_plan_for_topic(replica_count_topic, next_Leader, rack_alternated_list, fd_count, ud_count, brokers_replica_count)
+            reassignment_plan, balanced_partitions_for_topic = rassignment_Generator._generate_reassignment_plan_for_topic(replica_count_topic, next_Leader, rack_alternated_list, fd_count, ud_count, brokers_replica_count, force_rebalance)
             logger.debug("Already balanced partitions for the topic %s are: %s", topic, balanced_partitions_for_topic)
 
             for partition in balanced_partitions_for_topic:
@@ -770,15 +771,14 @@ class ReassignmentGenerator:
         logger.debug("Partition needs to be balanced.")
         return False
 
-    def _generate_reassignment_plan_for_topic(self, replica_count_topic, next_Leader, rack_alternated_list, fd_count, ud_count, brokers_replica_count):
+    def _generate_reassignment_plan_for_topic(self, replica_count_topic, next_Leader, rack_alternated_list, fd_count, ud_count, brokers_replica_count, force_rebalance):
         ret = None
         reassignment={"partitions":[],"version":1}
         balanced_partitions = []
 
         # Check if(Min(#UD,#FD) > = #replicas)
         if min ([ud_count, fd_count]) < replica_count_topic:
-            logger.warning("There are not as many upgrade/fault domains as the replica count for the topic %s. Rebalance with HA guarantee not possible! Skipping rebalance for the topic.", self.topic)
-            return ret, balanced_partitions
+            logger.warning("There are not as many upgrade/fault domains as the replica count for the topic %s. Number of Fault Domains: %s, Number of Update Domains: %s. The recommendation is to have at least 3 replicas if number of fault domains in the region is 3, and 4 replicas if number of fault domains is 2.", self.topic, fd_count, ud_count)
 
         # Check if there is a valid number of replicas for the topic
         if replica_count_topic <= 1:
@@ -790,7 +790,7 @@ class ReassignmentGenerator:
 
         # Iterate through all partitions and check whether they need to be re-balanced
         for i in range(0,len(self.partition_info)):
-            if not self._check_if_partition_balanced(self.partition_info[i], replica_count_topic, fd_count, ud_count, brokers_replica_count, balanced_partitions):
+            if (not self._check_if_partition_balanced(self.partition_info[i], replica_count_topic, fd_count, ud_count, brokers_replica_count, balanced_partitions)) or force_rebalance:
                 if self._is_partition_eligible_reassignment(self.partition_info[i], replica_count_topic):
                     r, next_Leader = self._scan_partition_for_reassignment(i, brokers_replica_count, rack_alternated_list, next_Leader, ud_count, replica_count_topic)
                     if r is not None:
@@ -850,13 +850,15 @@ def reassign_verify():
     ])
     logger.info(s)
 
-def reassign_exec():
+def reassign_exec(throttle_limit):
     s = subprocess.check_output([
         KAFKA_REASSIGN_PARTITIONS_TOOL_PATH,
         "--zookeeper",
         get_zookeeper_connect_string(),
         "--reassignment-json-file",
         ASSIGNMENT_JSON_FILE,
+        "--throttle",
+        throttle_limit if throttle_limit else DEFAULT_REBALANCE_THROTTLE_RATE_BPS,
         "--execute"
         ])
     logger.info(s)
@@ -938,6 +940,8 @@ def main():
     parser.add_argument('-topics', help='Comma separated list of topics to reassign replicas. Use ALL|all to rebalance all topics', type=str)
     parser.add_argument('--execute', action='store_true', default= False, help='whether or not to execute the reassignment plan')
     parser.add_argument('--verify', action='store_true', default=False, help='Execute rebalance of given plan and verify execution')
+    parser.add_argument('--force', action='store_true', default=False, help='Force rebalance of all partitions in a topic, even if already balanaced.')
+    parser.add_argument('-throttle', help='Upper bound on bandwidth used to move replicas from machine to machine.')
     parser.add_argument('--computeStorageCost', action='store_true', default=False, help='Use this for a non-new cluster to use compute free disk space per broker and partition sizes to determine the best reassignment plan. ')
     parser.add_argument('-deadhosts', help='Comma separated list of hosts which have been removed from the cluster', type=str)
     parser.add_argument('-username', help='Username for current user.')
@@ -955,6 +959,8 @@ def main():
     global password
     password = args.password
     dead_hosts = None
+    force_rebalance = args.force
+    throttle_limit = args.throttle
 
     if args.deadhosts:
         dead_hosts = [item for item in args.deadhosts.split(',')]
@@ -964,11 +970,11 @@ def main():
         return
 
     if args.execute:
-        reassign_exec()
+        reassign_exec(throttle_limit)
         return
 
     if topics is None:
-        logger.info("Pleae specify topics to rebalance using --topics. Use ALL to rebalance all topics.")
+        logger.info("Pleae specify topics to rebalance using -topics. Use ALL to rebalance all topics.")
         sys.exit()
     
     if topics.lower() == "all".lower():
@@ -983,7 +989,7 @@ def main():
     zookeeper_client = connect(zookeeper_quorum)
     # Get broker Ids to Hosts mapping
     brokers_info = get_brokerhost_info(zookeeper_client)
-    reassignment_plan = generate_reassignment_plan(topics, brokers_info, compute_storage_cost, dead_hosts)
+    reassignment_plan = generate_reassignment_plan(topics, brokers_info, compute_storage_cost, dead_hosts, force_rebalance)
 
     if reassignment_plan is None:
         logger.info("No need to rebalance. Current Kafka replica assignment has High Availability OR minimum requirements for rebalance not met. Check logs at %s for more info.", str(log_dir) + str(log_file))
