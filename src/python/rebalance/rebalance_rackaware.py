@@ -31,8 +31,8 @@ from kazoo.client import KazooState
 # LOGGING
 
 logger = logging.getLogger(__name__)
-log_file = "rebalance_log"
-log_dir = "/tmp/kafka_rebalance/";
+log_file = "syslog"
+log_dir = "/var/log/";
 SIMPLE_FORMATTER= logging.Formatter('%(asctime)s - %(filename)s [%(process)d] %(name)s - %(levelname)s - %(message)s')
 SYSLOG_FORMAT_STRING = ' %(filename)s [%(process)d] - %(name)s - %(levelname)s - %(message)s'
 SYSLOG_FORMATTER = logging.Formatter(SYSLOG_FORMAT_STRING)
@@ -87,6 +87,7 @@ def add_file_handler(logger, log_file_name):
         if exc.errno == errno.EEXIST and os.path.isdir(log_dir):
             pass
         else:
+            logger.error("Unable to create log dir")
             raise 'Unable to create log dir: {0}'.format(log_dir)
 
     log_file_path = os.path.join(log_dir, log_file_name)
@@ -112,7 +113,7 @@ def add_syslog_handler(logger, syslog_facility):
 
 # Constants
 KAFKA_BROKER = "kafka-broker"
-ASSIGNMENT_JSON_FILE = "/tmp/kafka_rebalance/rebalancePlan.json"
+ASSIGNMENT_JSON_FILE = "/var/log/rebalancePlan.json"
 ZOOKEEPER_PORT = ":2181"
 ZOOKEEPER_HOSTS = None
 BROKERS_ID_PATH = "brokers/ids"
@@ -155,6 +156,7 @@ def get_zookeeper_connect_string():
     if len(zkHosts) > 2:
         return zkHosts[:-1]
     else:
+        logger.error("Failed to get Zookeeper information from Ambari!")
         raise Exception("Failed to get Zookeeper information from Ambari!")
 
 '''
@@ -194,6 +196,7 @@ def get_cluster_topology_json():
         logger.debug("Cluster Topology: %s", topology_info)
         return topology_info
     else:
+        logerr.error("Failed to get cluster_topology_json_url from cluster manifest.")
         raise Exception("Failed to get cluster_topology_json_url from cluster manifest")
 
 '''
@@ -251,6 +254,7 @@ def get_topic_info(topic):
         topic
     ])
     if topicInfo is None or len(topicInfo)==0:
+        logger.error("Failed to get Kafka partition info for topic " + topic)
         raise Exception("Failed to get Kafka partition info for topic " + topic)
     return topicInfo
 
@@ -258,6 +262,7 @@ def get_replica_count_topic(topic):
     topicInfo = get_topic_info(topic)
     topicInfo_lines = topicInfo.split('\n')
     if len(topicInfo_lines) < 2:
+        logger.error("Failed to parse Kafka topic info")
         raise Exception("Failed to parse Kafka topic info")
 
     summary = topicInfo_lines[0].split()
@@ -473,6 +478,7 @@ def generate_reassignment_plan(topics, brokers_info, compute_storage_cost = Fals
             logger.debug("Info for topic %s: %s", topic, topicInfo)
             topicInfo_lines = topicInfo.split('\n')
             if len(topicInfo_lines) < 2:
+                logger.error("Failed to parse Kafka topic info for topic: %s", topic)
                 raise Exception("Failed to parse Kafka topic info for topic: %s", topic)
 
             partition_info = get_partition_info(topic, topicInfo_lines, partitions_sizes)
@@ -766,7 +772,7 @@ class ReassignmentGenerator:
                 for i in range(1, len(partition[REPLICAS])):
                     self._increment_count_replicas_in_broker(str(partition[REPLICAS][i]), brokers_replica_count, FOLLOWERS)
             balanced_partitions.append(partition)
-            logger.debug("Partition is balanced!")
+            logger.debug("Partition is balanced across available fault and update domains!")
             return True
         logger.debug("Partition needs to be balanced.")
         return False
@@ -778,7 +784,12 @@ class ReassignmentGenerator:
 
         # Check if(Min(#UD,#FD) > = #replicas)
         if min ([ud_count, fd_count]) < replica_count_topic:
-            logger.warning("There are not as many upgrade/fault domains as the replica count for the topic %s. Number of Fault Domains: %s, Number of Update Domains: %s. The recommendation is to have at least 3 replicas if number of fault domains in the region is 3, and 4 replicas if number of fault domains is 2.", self.topic, fd_count, ud_count)
+            logger.warning("There are not as many upgrade/fault domains as the replica count for the topic %s.\nReplica Count: %s, Number of Fault Domains: %s, Number of Update Domains: %s.\nThe recommendation is to have at least 3 replicas if number of fault domains in the region is 3, and 4 replicas if number of fault domains is 2.", self.topic, replica_count_topic, fd_count, ud_count)
+            if not force_rebalance:
+                logger.error("Rebalance with HA not possible! Skipping rebalance for the topic. If you like to rebalance regardless, please run the tool with -force flag.")
+                return ret, balanced_partitions
+            else:
+                logger.info("Proceeding with generation of reassignment plan since -force flag was specified.")
 
         # Check if there is a valid number of replicas for the topic
         if replica_count_topic <= 1:
@@ -790,14 +801,21 @@ class ReassignmentGenerator:
 
         # Iterate through all partitions and check whether they need to be re-balanced
         for i in range(0,len(self.partition_info)):
-            if (not self._check_if_partition_balanced(self.partition_info[i], replica_count_topic, fd_count, ud_count, brokers_replica_count, balanced_partitions)) or force_rebalance:
+            if (not self._check_if_partition_balanced(self.partition_info[i], replica_count_topic, fd_count, ud_count, brokers_replica_count, balanced_partitions)):
                 if self._is_partition_eligible_reassignment(self.partition_info[i], replica_count_topic):
                     r, next_Leader = self._scan_partition_for_reassignment(i, brokers_replica_count, rack_alternated_list, next_Leader, ud_count, replica_count_topic)
                     if r is not None:
                         reassignment["partitions"].append(r)
                         ret = reassignment
-        if not ret:
-            logger.info("TOPIC: %s is already balanced. Skipping rebalance.", self.topic)
+            else:
+                # Partition is already balanced. Add the existing assignment to the rebalance plan.
+                current_assignment = { 
+                    "topic" : self.topic,
+                    PARTITION : self.partition_info[i][PARTITION],
+                    REPLICAS : self.partition_info[i][ISR]
+                }
+                reassignment["partitions"].append(current_assignment)
+                ret = reassignment
 
         return ret, balanced_partitions
 
@@ -863,6 +881,7 @@ def reassign_exec(throttle_limit):
         ])
     logger.info(s)
     if "Successfully started reassignment of partitions" not in s:
+        logger.error("Rebalance operation failed!")
         raise Exception("Operation Failed!")
 
 '''
@@ -938,11 +957,11 @@ def get_partition_sizes(fqdn):
 def main():
     parser = argparse.ArgumentParser(description='Rebalance Kafka Replicas! :)')
     parser.add_argument('-topics', help='Comma separated list of topics to reassign replicas. Use ALL|all to rebalance all topics', type=str)
-    parser.add_argument('--execute', action='store_true', default= False, help='whether or not to execute the reassignment plan')
-    parser.add_argument('--verify', action='store_true', default=False, help='Execute rebalance of given plan and verify execution')
-    parser.add_argument('--force', action='store_true', default=False, help='Force rebalance of all partitions in a topic, even if already balanaced.')
+    parser.add_argument('-execute', action='store_true', default= False, help='whether or not to execute the reassignment plan')
+    parser.add_argument('-verify', action='store_true', default=False, help='Execute rebalance of given plan and verify execution')
+    parser.add_argument('-force', action='store_true', default=False, help='Force rebalance of all partitions in a topic, even if already balanaced.')
     parser.add_argument('-throttle', help='Upper bound on bandwidth used to move replicas from machine to machine.')
-    parser.add_argument('--computeStorageCost', action='store_true', default=False, help='Use this for a non-new cluster to use compute free disk space per broker and partition sizes to determine the best reassignment plan. ')
+    parser.add_argument('-computeStorageCost', action='store_true', default=False, help='Use this for a non-new cluster to use compute free disk space per broker and partition sizes to determine the best reassignment plan. ')
     parser.add_argument('-deadhosts', help='Comma separated list of hosts which have been removed from the cluster', type=str)
     parser.add_argument('-username', help='Username for current user.')
     parser.add_argument('-password', help='Password for current user.')
@@ -996,7 +1015,7 @@ def main():
         return
     else:
         logger.info("This is the reassignment-json-file, saved as %s", ASSIGNMENT_JSON_FILE)
-        logger.info("Please re-run this tool with '--execute' to perform rebalancing.")
+        logger.info("Please re-run this tool with '-execute' to perform rebalancing.")
 
 if __name__ == "__main__":
     initialize_logger(logger, log_file)

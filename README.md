@@ -29,9 +29,9 @@ sudo pip install --upgrade requests[security] PyOpenSSL ndg-httpsclient pyasn1 k
 Copy the file to /usr/hdp/current/kafka-broker/bin, and run it as ROOT.
 
 ```
-usage: sudo rebalance_rackaware.py [-h] [-topics TOPICS [TOPICS ...]] [--execute]
-                        [--verify] [--computeStorageCost] [-username USERNAME]
-                        [-password PASSWORD]
+usage: sudo rebalance_rackaware.py [-h] [-topics TOPICS [TOPICS ...]] [-execute]
+                        [-verify] [-computeStorageCost] [-username USERNAME]
+                        [-password PASSWORD] [-force]
 
 Rebalance Kafka Replicas.
 
@@ -40,9 +40,9 @@ optional arguments:
   -topics TOPICS [TOPICS ...]
                         Comma separated list of topics to reassign replicas.
                         Use ALL|all to rebalance all topics
-  --execute             whether or not to execute the reassignment plan
-  --verify              Verify status of reassignment operation
-  --force               Force rebalance of all partitions in a topic, even if already balanaced.
+  -execute              whether or not to execute the reassignment plan
+  -verify               Verify status of reassignment operation
+  -force                Force rebalance of all partitions in a topic, even if already balanaced.
   -throttle             Upper bound on bandwidth used to move replicas from machine to machine.
   -username USERNAME    Username for current user. Required for computing storage details.
   -password PASSWORD    Password for current user. Required for computing storage details.
@@ -56,7 +56,7 @@ Without "--execute" this tool only scans the current assignment generates the re
 
 ```sudo python rebalance_rackaware.py -topics ALL -username $USERNAME -password $PASSWORD```
 
-The plan will be saved at /tmp/kafka_rebalance/rebalancePlan.json
+The plan will be saved at /var/log/rebalancePlan.json
 
 #### Execute reassignment:
 
@@ -70,5 +70,5 @@ This will execute the plan saved in the above location.
 
 
 ## Debugging
-Debug logs can be found /tmp/kafka_rebalance/rebalance_log.log.
+Debug logs can be found /var/log/rebalance_log.log.
 The log file includes detailed information about the steps taken by the tool and can be used for troubleshooting.
