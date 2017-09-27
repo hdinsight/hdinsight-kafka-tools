@@ -29,23 +29,24 @@ sudo pip install --upgrade requests[security] PyOpenSSL ndg-httpsclient pyasn1 k
 Copy the file to /usr/hdp/current/kafka-broker/bin, and run it as ROOT.
 
 ```
-usage: sudo rebalance_rackaware.py [-h] [-topics TOPICS [TOPICS ...]] [-execute]
-                        [-verify] [-computeStorageCost] [-username USERNAME]
-                        [-password PASSWORD] [-force]
+usage: rebalance_rackaware.py [-h] [--topics TOPICS] [--execute] [--verify]
+                              [--force] [--throttle THROTTLE]
+                              [--rebalancePlanDir REBALANCEPLANDIR]
+                              [--deadhosts DEADHOSTS]
 
 Rebalance Kafka Replicas.
 
 optional arguments:
   -h, --help            show this help message and exit
-  -topics TOPICS [TOPICS ...]
-                        Comma separated list of topics to reassign replicas.
-                        Use ALL|all to rebalance all topics
-  -execute              whether or not to execute the reassignment plan
-  -verify               Verify status of reassignment operation
-  -force                Force rebalance of all partitions in a topic, even if already balanaced.
-  -throttle             Upper bound on bandwidth used to move replicas from machine to machine.
-  -username USERNAME    Username for current user. Required for computing storage details.
-  -password PASSWORD    Password for current user. Required for computing storage details.
+  --topics TOPICS [TOPICS ...]
+                         Comma separated list of topics to reassign replicas.
+                         Use ALL|all to rebalance all topics
+  --execute              whether or not to execute the reassignment plan
+  --verify               Verify status of reassignment operation
+  --force                Force rebalance of all partitions in a topic, even if already balanaced.
+  --throttle             Upper bound on bandwidth used to move replicas from machine to machine.
+  --rebalancePlanDir     Directory where the rebalance plan should be saved or retrieved from.
+  --deadhosts            Comma separated list of hosts which have been removed from the cluster.
 ```
 
 Without "--execute" this tool only scans the current assignment generates the replica reassignment file.
@@ -54,21 +55,21 @@ Without "--execute" this tool only scans the current assignment generates the re
 
 #### Generate reassignment plan for all topics on cluster:
 
-```sudo python rebalance_rackaware.py -topics ALL -username $USERNAME -password $PASSWORD```
+```sudo python rebalance_rackaware.py --topics ALL --rebalancePlanDir /tmp/rebalance/```
 
-The plan will be saved at /var/log/rebalancePlan.json
+The plan will be saved at /tmp/kafka_rebalance/rebalancePlan.json
 
 #### Execute reassignment:
 
-```sudo python rebalance_rackaware.py --execute```
+```sudo python rebalance_rackaware.py --execute --rebalancePlanDir /tmp/rebalance/```
 
 This will execute the plan saved in the above location.
 
 #### Verify progress of reassignment:
 
-```sudo python rebalance_rackaware.py --verify```
+```sudo python rebalance_rackaware.py --verify --rebalancePlanDir /tmp/rebalance/```
 
 
 ## Debugging
-Debug logs can be found /var/log/rebalance_log.log.
+Debug logs can be found /var/log/kafka/rebalance_log.log.
 The log file includes detailed information about the steps taken by the tool and can be used for troubleshooting.
