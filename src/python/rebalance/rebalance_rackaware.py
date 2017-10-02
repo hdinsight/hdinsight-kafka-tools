@@ -112,7 +112,7 @@ def add_syslog_handler(logger, syslog_facility):
 
 # Constants
 KAFKA_BROKER = "kafka-broker"
-ASSIGNMENT_JSON_FILE = "rebalancePlan.json"
+ASSIGNMENT_JSON_FILE = "kafkaRebalancePlan.json"
 ZOOKEEPER_PORT = ":2181"
 ZOOKEEPER_HOSTS = None
 BROKERS_ID_PATH = "brokers/ids"
@@ -139,6 +139,7 @@ FREE_DISK_SPACE = "fds"
 PARTITION_SIZE = "partition_size"
 ASSIGNED = "assigned"
 DEFAULT_REBALANCE_THROTTLE_RATE_BPS = "50000000"
+ALL_TOPICS_STRING = "all"
 
 '''
 Get information of Zookeeper Hosts
@@ -1012,7 +1013,7 @@ def main():
         logger.info("Pleae specify topics to rebalance using --topics. Use ALL to rebalance all topics.")
         sys.exit()
     
-    if topics.lower() == "all".lower():
+    if topics.lower() == ALL_TOPICS_STRING.lower():
         topics = get_topic_list()
     else:
         topics = [item for item in topics.split(',')]
