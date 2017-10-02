@@ -1010,7 +1010,7 @@ def main():
         return
 
     if topics is None:
-        logger.info("Pleae specify topics to rebalance using --topics. Use ALL to rebalance all topics.")
+        logger.info("Pleae specify topics to rebalance using -topics. Use ALL to rebalance all topics.")
         sys.exit()
     
     if topics.lower() == ALL_TOPICS_STRING.lower():
