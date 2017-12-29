@@ -1,75 +1,18 @@
-# Kafka Partition Rebalance Tool
+# HDInsight Kafka Tools
 
-## Introduction
-Kafka is not aware of the cluster topology (not rack aware) and hence partitions are susceptible to data loss or unavailability in the event of faults or updates. 
+This repository contains scripts, tools and ARM templates for Apache Kafka on HDInsight clusters.
+Please refer to the table below for different resources in this repository.
 
-This tool generates a reassignment plan that has two goals:
-- Redistribute the replicas of partitions of a topic across brokers in a manner such that all replicas of a partition are in separate Update Domains (UDs) & Fault Domains (FDs).
-- Balance the leader load across the cluster - The number of leaders assigned to each broker is more or less the same. 
+|Location|Description|
+---------|------------
+|[ARM Templates](src/arm/)|Azure ARM templates for HDInsight Kafka and various other cluster types that can be deployed in the same VNET alongwith HDInsight Kafka.|
+|[Powershell](src/powershell)|Powershell scripts to create HDInsight Kafka clusters.|
+|[Kafka Rebalance](src/python/rebalance)|Python script to rebalance (re-assign) Kafka Topics and Partitions across different Azure Fault Domains and Upgrade Domains for high availability.|
+|[Kafka Troubleshooting](src/python/troubleshooting)|Python scripts to check the status of Kafka brokers and restart brokers based on their health.|
 
-Once the reasignment plan is generated the user can execute this plan. Upon execution, the tool updates the zookeeper path '/admin/reassign_partitions' with the list of topic partitions and (if specified in the Json file) the list of their new assigned replicas. The controller listens to the path above. When a data change update is triggered, the controller reads the list of topic partitions and their assigned replicas from zookeeper. The control handles starting new replicas in RAR and waititing until the new replicas are in sync with the leader. At this point, the old replicas are stopped and the partition is removed from the '/admin/reassignpartitions' path. Note that these steps are async operations.
+## Other HDInsight Kafka Resources
+* [HDInsight Kafka - Getting Started](https://docs.microsoft.com/en-us/azure/hdinsight/kafka/apache-kafka-get-started)
+* [HDInsight FAQs](https://hdinsight.github.io/)
+* [HDInsight Kafka FAQs](https://hdinsight.github.io/kafka/kafka-landing)
 
-This tool is best stuitable for executing on 
-- New cluster
-- When a new topic/partition is created
-- Cluster is scaled up
-
-Note for execution on existing clusters:
-When executing on a cluster with large data sizes, there will be a performance degradation while reassignment is taking place, due to data movement. On large clusters, rebalance can take several hours. In such scenarios, it is recommended to execute rebalance by steps (by topic or by partitions of a topic).
-
-## Prequisites
-The script relies on various python modules. If not installed already, you must manually install these prior to execution:
-```
-sudo apt-get update
-sudo apt-get install libffi-dev libssl-dev
-sudo pip install --upgrade requests[security] PyOpenSSL ndg-httpsclient pyasn1 kazoo retry pexpect
-```
-
-## How to use
-Copy the file to /usr/hdp/current/kafka-broker/bin, and run it as ROOT.
-
-```
-usage: rebalance_rackaware.py [-h] [--topics TOPICS] [--execute] [--verify]
-                              [--force] [--throttle THROTTLE]
-                              [--rebalancePlanDir REBALANCEPLANDIR]
-                              [--deadhosts DEADHOSTS]
-
-Rebalance Kafka Replicas.
-
-optional arguments:
-  -h, --help            show this help message and exit
-  --topics TOPICS [TOPICS ...]
-                         Comma separated list of topics to reassign replicas.
-                         Use ALL|all to rebalance all topics
-  --execute              whether or not to execute the reassignment plan
-  --verify               Verify status of reassignment operation
-  --force                Force rebalance of all partitions in a topic, even if already balanaced.
-  --throttle             Upper bound on bandwidth used to move replicas from machine to machine.
-  --rebalancePlanDir     Directory where the rebalance plan should be saved or retrieved from.
-  --deadhosts            Comma separated list of hosts which have been removed from the cluster.
-```
-
-Without "--execute" this tool only scans the current assignment generates the replica reassignment file.
-
-## Example Invocation:
-
-#### Generate reassignment plan for all topics on cluster:
-
-```sudo python rebalance_rackaware.py --topics ALL --rebalancePlanDir /tmp/rebalance/```
-
-The plan will be saved at /tmp/kafka_rebalance/rebalancePlan.json
-
-#### Execute reassignment:
-
-```sudo python rebalance_rackaware.py --execute --rebalancePlanDir /tmp/rebalance/```
-
-This will execute the plan saved in the above location.
-
-#### Verify progress of reassignment:
-
-```sudo python rebalance_rackaware.py --verify --rebalancePlanDir /tmp/rebalance/```
-
-
-## Debugging
-Debug logs can be found /var/log/kafka/rebalance_log.log.
-The log file includes detailed information about the steps taken by the tool and can be used for troubleshooting.
+For feedback, please open new issues or write to us at hdikafka at microsoft dot com.
