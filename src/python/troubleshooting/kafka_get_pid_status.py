@@ -1,3 +1,5 @@
+"""Script to report the status of the Kafka process on this current host.
+"""
 import datetime, os, psutil
 
 kafka_pid_file = '/var/run/kafka/kafka.pid'

@@ -1,21 +1,30 @@
 # HDInsight Kafka Troubleshooting Python Scripts
 
-Respository of Python scripts that can be executed on any HDInsight Kafka cluster on any node via SSH. 
-Each of these scripts provide a support action which you can use to either get the health status of Kafka or perform certain actions like restarting Brokers and waiting for them to be healthy before proceeding to next one.
+Repository of Python scripts that can be executed on any HDInsight Kafka cluster node via SSH. 
+Each of these scripts provides a support action which you can use to either get the health status of Kafka or perform certain actions like restarting Brokers and waiting for them to be healthy before proceeding to next one.
 
-The scripts use Ambari and Zookeeper APIs to compute the information and execute appropriate Ambari Actions using internal libraries, so users do not need to provide any host names or credentials.
-Each script also generates a local log file whose name is also displayed on the console that can be shared for further investigations.
+The scripts use Ambari and Zookeeper APIs to gather the information and execute appropriate Ambari Actions using internal libraries, such that users do not need to provide any host names or credentials.
+Each script also generates a local log file whose name is also displayed on the console that can be shared with Microsoft support for further help/investigations.
 
-The scripts require HDInsight Clusters to be of versions HDI 3.5/HDP 2.5/Kafka 0.9, HDI 3.6/HDP 2.6/Kafka 0.10 or above.
+The scripts require HDInsight Clusters to be of versions HDI 3.5 (HDP 2.5/Kafka 0.9), HDI 3.6 (HDP 2.6/Kafka 0.10) or above.
 
 ## How to use this repository
-Please clone the repository on any HDInsight cluster node using the following command:
+Clone the repository on any HDInsight cluster node using the following command:
 
 ```
 git clone https://github.com/hdinsight/hdinsight-kafka-tools.git
 ```
 
-The scripts will be located under ```hdinsight-kafka-tools/src/python/troubleshooting``` and can be executed from any directory.
+The scripts are be located under ```hdinsight-kafka-tools/src/python/troubleshooting``` and can be executed from any directory.
+
+|Script|File|When to use|Description|
+-------|----|-----------|-----------|
+|Kafka Performance Test|[kafka_perf_test.py](kafka_perf_test.py)|Anytime|A quick performance test for Kafka.|
+|Kafka Broker Status|[kafka_broker_status.py](kafka_broker_status.py)|Anytime|Reports Broker status for all Kafka Brokers.|
+|Kafka Restart Brokers|[kafka_restart_brokers.py](kafka_restart_brokers.py)|Post Kafka configuration update|Restarts Kafka brokers based on health check.|
+|Kafka Restart Controller|[kafka_restart_controller.py](kafka_restart_controller.py)|For clearing Kafka controller state for partition leadership issues|Restarts Kafka Broker that is the current controller.|
+|Kafka Topic Describe|[kafka_topic_describe.py](kafka_topic_describe.py)|Anytime|Wrapper script for Kafka Topic describe that takes care of all inputs.|
+
 
 ## Kafka Performance Test
 A simple script that uses Kafka Performance tools to create a topic, produce and consume data from the topic and then deletes the topic. All the parameters are taken care of by the script.
@@ -106,7 +115,7 @@ usage: run_custom_commands.py [-h] ssh_username ssh_password
 Run custom commands on all Kafka Brokers hosts.
 
 positional arguments:
-  ssh_username  The SSH Username for the nodes.
+  ssh_username  The SSH User name for the nodes.
   ssh_password  The SSH Password or SSH Key File for the SSH User.
 
 optional arguments:

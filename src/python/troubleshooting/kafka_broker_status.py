@@ -1,11 +1,15 @@
-﻿import logging, pprint, time
+﻿"""Script to report the current Kafka Broker status for this HDInsight Kafka cluster.
+"""
+import logging, pprint, time
 
 from kafka_utils import KafkaUtils
 
 logger = logging.getLogger(__name__)
 debug = False
 
-def print_zookeeper_brokers(broker_hosts, zk_brokers):
+def str_kafka_brokers_status(broker_hosts, zk_brokers):
+    """Returns the formatted Broker status as string. Takes Broker Hosts from Ambari and Zookeeper as the input.
+    """
     if len(zk_brokers) > 0:
         return ('Zookeeper registered brokers: {0}\n{1}\n{2}\n'.
             format(
@@ -33,7 +37,9 @@ def print_zookeeper_brokers(broker_hosts, zk_brokers):
     else:
         return 'There are NO brokers registered in Zookeeper.'
 
-def print_zookeeper_controller(zk_controller):
+def str_kafka_controller_status(zk_controller):
+    """Returns the formatted Kafka Controller status as string. Takes Controller data from Zookeeper as the input.
+    """
     return ('Zookeeper registered controller: \n{0}\n{1}\n'.
                 format(
                     '{0} {1} {2} {3} {4}'.format(
@@ -50,12 +56,16 @@ def print_zookeeper_controller(zk_controller):
                         zk_controller['duration'].ljust(30))
                 ))
 
-def get_broker_status(utils):
-    broker_hosts, brokers = utils.get_brokers()
+def get_kafka_broker_status(utils):
+    """Gets Kafka Broker status by querying Ambari and Zookeeper.
+    
+    Returns Broker Hosts in Ambari and Zookeeper, and Dead Brokers. All the returned objects are dictionaries of dictionaries with host name as the key.
+    """
+    broker_hosts, brokers = utils.get_brokers_from_ambari()
     logger.info('Ambari brokers: {0}\n{1}\n'.format(len(broker_hosts), pprint.pformat(broker_hosts)))
 
-    zk_brokers = utils.get_zookeeper_brokers()
-    logger.info(print_zookeeper_brokers(broker_hosts, zk_brokers))
+    zk_brokers = utils.get_brokers_from_zookeeper()
+    logger.info(str_kafka_brokers_status(broker_hosts, zk_brokers))
 
     dead_broker_hosts = {}
     for expected_broker_host in broker_hosts:
@@ -70,8 +80,15 @@ def get_broker_status(utils):
     
     return broker_hosts, zk_brokers, dead_broker_hosts
 
-def get_controller_status(utils, broker_hosts, zk_brokers):
-    zk_controller = utils.get_controller()
+def get_kafka_controller_status(utils, broker_hosts, zk_brokers):
+    """Gets Kafka Controller status by querying Zookeeper. Returns a dictionary object for the controller.
+    
+    Returned object contains following keys:
+    controller_id (broker_id)
+    controller_host
+    controller_ip
+    """
+    zk_controller = utils.get_controller_from_zookeeper()
     if zk_brokers and zk_controller:
         zk_controller['controller_id'] = str(zk_controller['brokerid'])
         for zk_broker_host, zk_broker_info in zk_brokers.iteritems():
@@ -82,7 +99,7 @@ def get_controller_status(utils, broker_hosts, zk_brokers):
         if 'controller_host' not in zk_controller:
             logger.error('Unable to find controller host information')
         else:
-            logger.info(print_zookeeper_controller(zk_controller))
+            logger.info(str_kafka_controller_status(zk_controller))
     else:
         err_msg = 'There are no brokers or controller online.'
         logger.error(err_msg)
@@ -90,9 +107,9 @@ def get_controller_status(utils, broker_hosts, zk_brokers):
     return zk_controller
 
 def main(utils):
-    broker_hosts, zk_brokers, dead_broker_hosts = get_broker_status(utils)
-    zk_controller = get_controller_status(utils, broker_hosts, zk_brokers)
+    broker_hosts, zk_brokers, dead_broker_hosts = get_kafka_broker_status(utils)
+    zk_controller = get_kafka_controller_status(utils, broker_hosts, zk_brokers)
 
 if __name__ == '__main__':
-    utils = KafkaUtils(logger, "kafkabrokercheck{0}.log".format(int(time.time())), debug)
+    utils = KafkaUtils(logger, "kafkabrokerstatus{0}.log".format(int(time.time())), debug)
     main(utils)

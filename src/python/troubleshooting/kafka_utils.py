@@ -9,6 +9,12 @@ from kazoo.client import KazooState
 from kazoo.protocol.states import EventType
 
 class KafkaUtils:
+    """Utility class for Kafka troubleshooting scripts.
+    
+    The class provides methods and routines for various Ambari and Zookeeper operations.
+    """
+    
+    """Constants"""
     SERVICE_KAFKA = 'KAFKA'
     COMPONENT_KAFKA_BROKER = 'KAFKA_BROKER'
     ZK_KAFKA_BROKER_PATH = 'brokers/ids'
@@ -16,10 +22,15 @@ class KafkaUtils:
     STATE_INSTALLED = 'INSTALLED'
     STATE_STARTED = 'STARTED'
 
+    KAFKA_BROKER_PORT = '9092'
+    ZOOKEEPER_PORT = '2181'
+
     TIMEOUT_SECS = 900
     SLEEP_SECS = 30
 
     def __init__(self, logger_arg, log_file, debug_mode = False):
+        """Constructor for KafkaUtils that sets up the logging module and AmbariHelper.
+        """
         self.debug_mode = debug_mode
         self.logger = logger_arg
         self.logger.setLevel(logging.DEBUG)
@@ -46,6 +57,8 @@ class KafkaUtils:
         self.cluster_name = self.cluster_manifest.deployment.cluster_name
 
     def run_shell_command(self, shell_command, throw_on_error = True):
+        """Runs a shell command locally and returns the stdout, stderr
+        """
         self.logger.info(shell_command)
         if not self.debug_mode:
             p = subprocess.Popen(shell_command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
@@ -63,7 +76,9 @@ class KafkaUtils:
 
             return stdout, stderr
 
-    def get_hosts(self):
+    def get_hosts_from_ambari(self):
+        """Gets Hosts from Ambari.
+        """
         hosts_result = self.ambari_helper.request_url('clusters/{0}/hosts'.format(self.cluster_name), 'GET', {'fields' : 'Hosts/ip'})
 
         hosts = {}
@@ -72,39 +87,49 @@ class KafkaUtils:
         self.logger.debug('hosts: {0}\n'.format(pprint.pformat(hosts)))
         return hosts
 
-    def get_zookeepers(self):
-        hosts = self.get_hosts()
+    def get_zookeeper_hosts(self):
+        """Gets Zookeeper hosts from Ambari.
+        """
+        hosts = self.get_hosts_from_ambari()
 
         zk_hosts = { k:v for k,v in hosts.iteritems() if k.startswith(self.cluster_manifest.settings[Constants.ZOOKEEPER_VM_NAME_PREFIX_SETTING_KEY])}
         self.logger.debug('zk_hosts:\n{0}\n'.format(pprint.pformat(zk_hosts)))
 
         zk_quorum = reduce(lambda r1, r2 : r1 + ',' + r2,
-                        map(lambda m : m + ':2181', zk_hosts))
+                        map(lambda m : m + ':' + self.ZOOKEEPER_PORT, zk_hosts))
 
         self.logger.debug('zk_quorum: {0}\n'.format(zk_quorum))
 
         return zk_hosts, zk_quorum
 
     def get_zookeeper_quorum(self):
-        zk_hosts, zk_quorum = self.get_zookeepers()
+        """Gets the Zookeeper quorum.
+        """
+        zk_hosts, zk_quorum = self.get_zookeeper_hosts()
         return zk_quorum
 
-    def get_brokers(self):
-        hosts = self.get_hosts()
+    def get_brokers_from_ambari(self):
+        """Gets Broker Information. Returns Dictionary of Brokers hosts and the Broker Connection String.
+        """
+        hosts = self.get_hosts_from_ambari()
 
         broker_hosts = { k:v for k,v in hosts.iteritems() if k.startswith(self.cluster_manifest.settings[Constants.WORKERNODE_VM_NAME_PREFIX_SETTING_KEY])}
         self.logger.debug('broker_hosts:\n{0}\n'.format(pprint.pformat(broker_hosts)))
 
         brokers = reduce(lambda r1, r2 : r1 + ',' + r2,
-                      map(lambda m : m + ':9092',
+                      map(lambda m : m + ':' + self.KAFKA_BROKER_PORT,
                           broker_hosts))
         self.logger.debug('brokers: {0}\n'.format(brokers))
 
         return broker_hosts, brokers
 
-    def get_zookeeper_brokers(self):
+    def get_brokers_from_zookeeper(self):
+        """Gets the Kafka Broker information from Zookeeper for live brokers.
+        
+        Returns a dictionary of Brokers with host name as the key, where each entry contains another dictionary for that broker information
+        """
         zk_quorum = self.get_zookeeper_quorum()
-        zk = self.connect(zk_quorum)
+        zk = self.zk_connect(zk_quorum)
 
         zk_brokers_ids = zk.get_children(self.ZK_KAFKA_BROKER_PATH)
 
@@ -121,9 +146,11 @@ class KafkaUtils:
         zk.stop()
         return zk_brokers_info
 
-    def get_controller(self):
+    def get_controller_from_zookeeper(self):
+        """Gets the Kafka controller information from Zookeeper as a dict.
+        """
         zk_quorum = self.get_zookeeper_quorum()
-        zk = self.connect(zk_quorum)
+        zk = self.zk_connect(zk_quorum)
         zk_controller_data, stat = zk.get(self.ZK_KAFKA_CONTROLLER_PATH)
         zk.stop()
 
@@ -134,10 +161,14 @@ class KafkaUtils:
 
         return zk_controller
 
-    def get_stale_broker_hosts(self):
-        return self.get_stale_hosts(self.COMPONENT_KAFKA_BROKER)
+    def get_stale_broker_hosts_from_ambari(self):
+        """Gets Brokers from Ambari with Stale configs.
+        """
+        return self.get_stale_hosts_from_ambari(self.COMPONENT_KAFKA_BROKER)
 
-    def get_stale_hosts(self, component_name):
+    def get_stale_hosts_from_ambari(self, component_name):
+        """Gets hosts from Ambari that have Stale configs for the given component_name
+        """
         params = {'HostRoles/stale_configs' : 'true', 'HostRoles/component_name' : component_name}
         hosts_result = self.ambari_helper.request_url('clusters/{0}/host_components'.format(self.cluster_name), 'GET', params)
 
@@ -147,30 +178,42 @@ class KafkaUtils:
         self.logger.info('Hosts with stale configs for component {0}: {1}\n{2}\n'.format(component_name, len(stale_hosts), pprint.pformat(stale_hosts)))
         return stale_hosts
 
-    def restart_broker(self, host_name):
-        return self.restart_component(host_name, self.SERVICE_KAFKA, self.COMPONENT_KAFKA_BROKER)
+    def restart_kafka_broker_from_ambari(self, host_name):
+        """Restart the Kafka Broker on the host.
+        """
+        return self.restart_component_from_ambari(host_name, self.SERVICE_KAFKA, self.COMPONENT_KAFKA_BROKER)
     
-    def restart_component(self, host_name, service_name, component_name):
-        self.stop_component(host_name, service_name, component_name)
-        self.start_component(host_name, service_name, component_name)
+    def restart_component_from_ambari(self, host_name, service_name, component_name):
+        """Restart the component for a service on the host.
+        """
+        self.stop_component_from_ambari(host_name, service_name, component_name)
+        self.start_component_from_ambari(host_name, service_name, component_name)
 
-    def get_component(self, host_name, service_name, component_name):
+    def get_component_from_ambari(self, host_name, service_name, component_name):
+        """Gets the component state from Ambari for the host.
+        """
         host_component_url = 'clusters/{0}/hosts/{1}/host_components/{2}'.format(self.cluster_name, host_name, component_name)
         return self.ambari_helper.query_url(host_component_url)
 
-    def stop_component(self, host_name, service_name, component_name):
-        self.change_host_component_state(host_name, service_name, component_name, self.STATE_INSTALLED)
-        return self.ensure_component_state(host_name, service_name, component_name, self.STATE_INSTALLED)
+    def stop_component_from_ambari(self, host_name, service_name, component_name):
+        """Stops the component on the host and waits until it stops.
+        """
+        self.change_host_component_state_from_ambari(host_name, service_name, component_name, self.STATE_INSTALLED)
+        return self.wait_for_component_state_from_ambari(host_name, service_name, component_name, self.STATE_INSTALLED)
 
-    def start_component(self, host_name, service_name, component_name):
-        self.change_host_component_state(host_name, service_name, component_name, self.STATE_STARTED)
-        return self.ensure_component_state(host_name, service_name, component_name, self.STATE_STARTED)
+    def start_component_from_ambari(self, host_name, service_name, component_name):
+        """Starts the component on the hosts and waits until it is started.
+        """
+        self.change_host_component_state_from_ambari(host_name, service_name, component_name, self.STATE_STARTED)
+        return self.wait_for_component_state_from_ambari(host_name, service_name, component_name, self.STATE_STARTED)
 
-    def ensure_component_state(self, host_name, service_name, component_name, state):
+    def wait_for_component_state_from_ambari(self, host_name, service_name, component_name, state):
+        """Waits for the component to reach the desired state.
+        """
         now = time.time()
         timeout = now + self.TIMEOUT_SECS
         while time.time() < timeout:
-            component = self.get_component(host_name, service_name, component_name)
+            component = self.get_component_from_ambari(host_name, service_name, component_name)
             if (component['HostRoles']['state'] == state):
                 self.logger.debug('Component {0} on host {1} reached the desired state: {2}'.format(component_name, host_name, state))
                 return component
@@ -183,7 +226,7 @@ class KafkaUtils:
         raise RuntimeError(err_msg)
 
     @retry(exceptions=BaseException, tries=Constants.MAX_RETRIES, delay=Constants.RETRY_INTERVAL_DELAY, backoff=Constants.RETRY_INTERVAL_BACKOFF)
-    def change_host_component_state(self, host_name, service_name, component_name, state):
+    def change_host_component_state_from_ambari(self, host_name, service_name, component_name, state):
         """
         Convenience method for changing the state of a particular host component. State values can be 'STARTED' or 'INSTALLED'
         """
@@ -201,40 +244,18 @@ class KafkaUtils:
         json_payload = json.dumps(payload)
         return self.ambari_helper.put_url(host_component_url, json_payload)
 
-    def get_shell_inputs(self):
-        zookeepers = self.get_zookeeper_quorum()
-        broker_hosts, brokers = self.get_brokers()
-        broker_hosts_count = len(broker_hosts)
-
-        self.logger.info('Choosing defaults:')
-        partitions=broker_hosts_count
-        replicationfactor=min(3,broker_hosts_count)
-        messages=(partitions*1000000)
-        threads=min(4,partitions)
-        messagesize=100
-        batchsize=10000
-
-        self.logger.info('\n' + 
-            'zookeepers = {0}\n'.format(zookeepers) +
-            'brokers = {0}\n'.format(brokers) +
-            'partitions = {0}\n'.format(partitions) +
-            'replicationfactor = {0}\n'.format(replicationfactor) +
-            'messages = {0}\n'.format(messages) +
-            'threads = {0}\n'.format(threads) +
-            'messagesize = {0}\n'.format(messagesize) +
-            'batchsize = {0}\n'.format(batchsize)
-        )
-    
-        return zookeepers, brokers, partitions, replicationfactor, messages, threads, messagesize, batchsize
-
-    def connection_lost(self, state):
+    def zk_connection_loss_check(self, state):
+        """Checks for Zookeeper connection loss
+        """
         if state == KazooState.LOST or state == KazooState.SUSPENDED:
             raise RuntimeError('Fatal error lost connection to zookeeper.')
 
     @retry(exceptions=BaseException, tries=3, delay=1, backoff=2)
-    def connect(self, zk_quorum):
+    def zk_connect(self, zk_quorum):
+        """Connect to the specified Zookeeper quorum using the connection string.
+        """
         self.logger.debug('Connecting to zookeeper quorum at: {0}'.format(zk_quorum))
         zk = KazooClient(hosts=zk_quorum)
         zk.start()
-        zk.add_listener(self.connection_lost)
+        zk.add_listener(self.zk_connection_loss_check)
         return zk

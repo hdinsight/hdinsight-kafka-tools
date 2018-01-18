@@ -40,7 +40,7 @@ def main(args, utils):
         ssh_password_param = 'sshpass -p {0} '.format(ssh_password)
         stdout, stderr = utils.run_shell_command('sudo apt-get install sshpass')
 
-    broker_hosts, brokers = utils.get_brokers()
+    broker_hosts, brokers = utils.get_brokers_from_ambari()
     errored_brokers = []
     for broker_host in broker_hosts:
         if broker_host:
