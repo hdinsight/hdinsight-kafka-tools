@@ -1,22 +1,18 @@
 '''
 Rebalance Kafka partition replicas to achieve HA (Fault Domain/Update Domain awareness). The tool distributes replicas of partitions of a topic across brokers in a manner such that each replica is in a separate fault domain and update domain. The tool also distibutes the leaders such that each broker has approximately the same number of leaders for partitions.
-
 Rebelance can be executed for one or more topics.
-
 PRE-REQS:
 =========
 sudo apt-get install -y libffi-dev libssl-dev
 sudo pip install --upgrade requests[security] PyOpenSSL ndg-httpsclient pyasn1 kazoo retry pexpect
-
 RUNNING THE SCRIPT:
 ===================
-
 1) Copy the script to /usr/hdp/current/kafka-broker/bin on your cluster
-
 2) Run this script with sudo privilege due to permission issues on some python packages:
 sudo python rebalance_new.py
 '''
 
+import pprint
 import logging, sys, json, subprocess, os.path, errno, traceback, argparse, requests, os, re, time, tempfile, pexpect, random
 from retry import retry
 from operator import itemgetter
@@ -192,6 +188,7 @@ def get_cluster_topology_json():
         r = requests.get(json_url)
         topology_info = r.text
         logger.debug("Cluster Topology: %s", topology_info)
+
         return topology_info
     else:
         raise_error("Failed to get cluster_topology_json_url from cluster manifest.")
@@ -386,7 +383,6 @@ def get_storage_info(host_info):
 '''
 Generate a replica reassignment JSON file to be passed to the Kafka Replica reassignment tool.
 The method parses the cluster manifest to retrieve the topology information about hosts, including the fault & update domains. These are passed to the ReassignmentGenerator class which checks if each topic is already balanced and generates a reassignment plan if not.
-
 Return value (reassignment json) is of the format:
 {"partitions":
     [{"topic": "foo",
@@ -395,7 +391,6 @@ Return value (reassignment json) is of the format:
     ],
     "version":1
 }
-
 Sample Cluster Topology JSON:
 {
     "hostGroups": {
@@ -444,7 +439,8 @@ def generate_reassignment_plan(plan_directory, topics, brokers_info, compute_sto
     if compute_storage_cost:
         partitions_sizes = get_storage_info(host_info)
         logger.debug("Partition Sizes: %s", str(partitions_sizes))
-    logger.debug("Host Information: %s", str(host_info))
+    logger.debug("\nHost Information: \n%s", host_info)
+    logger.info("\n\nHost Rack Information: \n%s\n", "\n".join(list(map(lambda datum: "Broker: {0} Rack: {1}".format(str(datum['brokerId']), datum['rack']), host_info))))
     fd_list, ud_list = generate_fd_list_ud_list(host_info)
     fd_count, ud_count = len(fd_list), len(ud_list)
 
@@ -470,17 +466,17 @@ def generate_reassignment_plan(plan_directory, topics, brokers_info, compute_sto
             topicInfo = get_topic_info(topic)
             replica_count_topic = get_replica_count_topic(topic)
             logger.info("Replica count for topic %s is %s", topic, replica_count_topic)
-            logger.debug("Info for topic %s: %s", topic, topicInfo)
+            logger.debug("Info for topic %s: \n%s", topic, topicInfo)
             topicInfo_lines = topicInfo.split('\n')
             if len(topicInfo_lines) < 2:
                 raise_error("Failed to parse Kafka topic info for topic: %s", topic)
 
             partition_info = get_partition_info(topic, topicInfo_lines, partitions_sizes)
-            logger.debug("Partition info for topic %s : %s", topic, str(partition_info))
-            rassignment_Generator = ReassignmentGenerator(host_info, topic, partition_info, compute_storage_cost)
+            logger.debug("Partition info for topic %s : \n%s", topic, partition_info)
+            reassignment_generator = ReassignmentGenerator(host_info, topic, partition_info, compute_storage_cost)
             # Generate Rack alternated list
-            fd_ud_list = rassignment_Generator._generate_fd_ud_list()
-            rack_alternated_list = rassignment_Generator._generate_alternated_fd_ud_list(fd_ud_list, fd_list, ud_list)
+            fd_ud_list = reassignment_generator._generate_fd_ud_list()
+            rack_alternated_list = reassignment_generator._generate_alternated_fd_ud_list(fd_ud_list, fd_list, ud_list)
             logger.debug("Generated Rack alternated list: %s", str(rack_alternated_list))
 
             # Variables to keep track of which rack in the alternated list is the next one to be assigned a replica. 
@@ -490,29 +486,34 @@ def generate_reassignment_plan(plan_directory, topics, brokers_info, compute_sto
 
             logger.debug("Start with position in Rack Alternated List: %s", str(next_Leader))
 
-            reassignment_plan, balanced_partitions_for_topic = rassignment_Generator._generate_reassignment_plan_for_topic(replica_count_topic, next_Leader, rack_alternated_list, fd_count, ud_count, brokers_replica_count, force_rebalance)
-            logger.debug("Already balanced partitions for the topic %s are: %s", topic, balanced_partitions_for_topic)
+            reassignment_plan, balanced_partitions_for_topic = reassignment_generator._generate_reassignment_plan_for_topic(replica_count_topic, next_Leader, rack_alternated_list, fd_count, ud_count, brokers_replica_count, force_rebalance)
+            logger.debug("\nAlready balanced partitions for the topic %s are: \n%s", topic, balanced_partitions_for_topic)
 
             for partition in balanced_partitions_for_topic:
                 global_balanced_partitions.append(partition)
             if reassignment_plan is not None:
-                logger.info("Generated reassignment plan for topic: %s", topic)
+                logger.info("\n\nReassignment plan generated for topic: %s\n%s\n", topic, reassignment_plan)
                 if ret is not None:
                     ret["partitions"] += reassignment_plan["partitions"]
                 else:
                     ret = reassignment_plan
-                verify_plan = rassignment_Generator._verify_reassignment_plan(reassignment_plan, topic, replica_count_topic, fd_count, ud_count)
+                verify_plan = reassignment_generator._verify_reassignment_plan(reassignment_plan, topic, replica_count_topic, fd_count, ud_count)
                 verify_leaders_distributed(host_info, ret, global_balanced_partitions)
 
         if ret is not None:
             verify_leader_count_balanced = verify_leaders_distributed(host_info, ret, global_balanced_partitions)
 
+            #save the reassignment plan in ASSIGNMENT_JSON_FILE
             ret = json.dumps(ret)
             f = open(os.path.join(plan_directory, ASSIGNMENT_JSON_FILE), "w")
             f.write(ret)
             f.close()
 
-        logger.info("Completed generating plans for all topics!")
+            logger.info("\n\nComplete Reassignment plan for all topics! \n%s\n", ret)
+        else:
+            #remove contents from ASSIGNMENT_JSON_FILE
+            open(os.path.join(plan_directory, ASSIGNMENT_JSON_FILE), "w").close()
+
     return ret
 
 class ReassignmentGenerator:
@@ -667,16 +668,11 @@ class ReassignmentGenerator:
             For 3 x 3: the list is: (0,0), (1,1), (2,2), (0,1), (1,2), (2,0), (0,2), (1,0), (2,1)
             In first iteration we look at: (0,0) (1,1) (2,2) if replica count is 3.
             Each of these represent racks for which there could be multiple brokers.
-
         2>  Determine which of the racks has the least number of leaders.
-
         3>  Assign this rack as the leader for the partition.
-
         4>  Determine all eligible brokers within this rack. Assign the broker with the least number of leaders within the rack       as the leader for this partition.
-
         5> Assign the remaining replicas to the 2 other racks in the set. These are follower replicas.
         This is to ensure we will not always get the same set of sequences.
-
         6> Look at the next set of 3 Racks and repeat from 1>
     '''
     def _scan_partition_for_reassignment(self, index, brokers_replica_count, rack_alternated_list, start_index, ud_count, replica_count_topic):
@@ -729,7 +725,7 @@ class ReassignmentGenerator:
                     host_for_broker = [element for element in self.host_info if element[BROKER_ID] == follower_broker_id][0]
                     host_for_broker[FREE_DISK_SPACE] -= self.partition_info[index][PARTITION_SIZE]
                     p_size = self.partition_info[index][PARTITION_SIZE]
-        logger.debug("Reassigning Partition: %s of SIZE: %s from %s to %s", self.partition_info[index][PARTITION], p_size, self.partition_info[index][REPLICAS], reassignment[REPLICAS])
+        logger.debug("Topic: %s Reassigning Partition: %s of SIZE: %s from %s --> %s", self.topic, self.partition_info[index][PARTITION], p_size, self.partition_info[index][REPLICAS], reassignment[REPLICAS])
         self.partition_info[index][ASSIGNED] = True
 
         start_index += min(ud_count, replica_count)
@@ -774,6 +770,8 @@ class ReassignmentGenerator:
     def _generate_reassignment_plan_for_topic(self, replica_count_topic, next_Leader, rack_alternated_list, fd_count, ud_count, brokers_replica_count, force_rebalance):
         ret = None
         reassignment={"partitions":[],"version":1}
+        reassignment_changes = []
+        retained_assignment={"partitions":[]}
         balanced_partitions = []
 
         # Check if(Min(#UD,#FD) > = #replicas)
@@ -806,23 +804,34 @@ class ReassignmentGenerator:
                     if r is not None:
                         reassignment["partitions"].append(r)
                         ret = reassignment
+                        reassignment_changes.append("Partition {0} {1} --> {2}".format(int(self.partition_info[i][PARTITION]), self.partition_info[i][REPLICAS], r[REPLICAS]))
             else:
                 # Partition is already balanced. Add the existing assignment to the rebalance plan.
-                current_assignment = { 
+                current_partition_assignment = { 
                     "topic" : self.topic,
                     PARTITION : self.partition_info[i][PARTITION],
                     REPLICAS : self.partition_info[i][ISR]
                 }
-                reassignment["partitions"].append(current_assignment)
-                ret = reassignment
+                retained_assignment["partitions"].append(current_partition_assignment)
 
+        # If some partitions need to be rebalanced (ret is not None) then append the retained assignment to the reassignment partitions and update ret
+        if len(retained_assignment["partitions"]) > 0 and ret is not None:
+            logger.info("Topic: %s Partitions Already Balanced: %s Partitions To Be Rebalanced: %s", self.topic,
+                        list(map(lambda datum: datum['partition'], retained_assignment["partitions"])),
+                        list(map(lambda datum: datum['partition'], ret["partitions"])))
+            for j in retained_assignment["partitions"]:
+                reassignment["partitions"].append(j)
+            ret = reassignment
+
+        if len(reassignment_changes) > 0:
+            logger.info("\n\nReassignment changes: Topic: {0} \n{1}\n".format(self.topic, "\n".join(reassignment_changes)))
         return ret, balanced_partitions
 
     '''
         Verifies that the reassignment plan generated for the topic guarantees high availability.
     '''
     def _verify_reassignment_plan(self, reassignment_plan, topic, replica_count, fd_count, ud_count, brokers_replica_count = None, balanced_partitions = []):
-        logger.info("Verifying that the rebalance plan generated meets confditions for HA.")
+        logger.info("Verifying that the rebalance plan generated meets conditions for HA.")
         partitions_plan = reassignment_plan["partitions"]
         for p in partitions_plan:
             if not self._check_if_partition_balanced(p, replica_count, fd_count, ud_count, brokers_replica_count, balanced_partitions):
@@ -854,7 +863,7 @@ def verify_leaders_distributed(host_info, reassignment_plan, balanced_partitions
             else:
                 e[FOLLOWERS] += 1
 
-    logger.debug("Count of Replicas Acrtoss Brokers: " + str(brokers_replica_count))
+    logger.debug("Count of Replicas Across Brokers: " + str(brokers_replica_count))
 
 def reassign_verify(plan_directory):
     s = subprocess.check_output([
@@ -868,19 +877,22 @@ def reassign_verify(plan_directory):
     logger.info(s)
 
 def reassign_exec(plan_directory, throttle_limit):
-    s = subprocess.check_output([
-        KAFKA_REASSIGN_PARTITIONS_TOOL_PATH,
-        "--zookeeper",
-        get_zookeeper_connect_string(),
-        "--reassignment-json-file",
-        os.path.join(plan_directory, ASSIGNMENT_JSON_FILE),
-        "--throttle",
-        throttle_limit if throttle_limit else DEFAULT_REBALANCE_THROTTLE_RATE_BPS,
-        "--execute"
-        ])
-    logger.info(s)
-    if "Successfully started reassignment of partitions" not in s:
-        raise_error("Rebalance operation failed!")
+    if os.stat(os.path.join(plan_directory, ASSIGNMENT_JSON_FILE)).st_size == 0:
+        logger.info("The reassignment plan is empty. The cluster is possibly already balanced.")
+    else:
+        s = subprocess.check_output([
+            KAFKA_REASSIGN_PARTITIONS_TOOL_PATH,
+            "--zookeeper",
+            get_zookeeper_connect_string(),
+            "--reassignment-json-file",
+            os.path.join(plan_directory, ASSIGNMENT_JSON_FILE),
+            "--throttle",
+            throttle_limit if throttle_limit else DEFAULT_REBALANCE_THROTTLE_RATE_BPS,
+            "--execute"
+            ])
+        logger.info(s)
+        if "Successfully started reassignment of partitions" not in s:
+            raise_error("Rebalance operation failed!")
 
 '''
     Log Kafka and HDP Version
@@ -998,7 +1010,7 @@ def main():
             else:
                 raise_error('Unable to create log dir: {0}'.format(args.rebalancePlanDir))
     else:
-        logger.info("Pleae specify path the directory where the rebalance plan should be saved/read from using --rebalancePlanDir.")
+        logger.info("Please specify path the directory where the rebalance plan should be saved/read from using --rebalancePlanDir.")
         sys.exit()
 
     if args.verify:
@@ -1010,7 +1022,7 @@ def main():
         return
 
     if topics is None:
-        logger.info("Pleae specify topics to rebalance using -topics. Use ALL to rebalance all topics.")
+        logger.info("Please specify topics to rebalance using -topics. Use ALL to rebalance all topics.")
         sys.exit()
     
     if topics.lower() == ALL_TOPICS_STRING.lower():
@@ -1032,9 +1044,8 @@ def main():
         return
     else:
         logger.info("This is the reassignment-json-file, saved as %s at the specified directory: %s", ASSIGNMENT_JSON_FILE, args.rebalancePlanDir)
-        logger.info("Please re-run this tool with '-execute' to perform rebalancing.")
+        logger.info("Please re-run this tool with '-execute' to perform rebalance operation.")
 
 if __name__ == "__main__":
     initialize_logger(logger, log_file)
     main()
-    
