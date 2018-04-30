@@ -440,7 +440,7 @@ def generate_reassignment_plan(plan_directory, topics, brokers_info, compute_sto
         partitions_sizes = get_storage_info(host_info)
         logger.debug("Partition Sizes: %s", str(partitions_sizes))
     logger.debug("\nHost Information: \n%s", host_info)
-    logger.info("\n\nHost Rack Information: \n%s\n", "\n".join(list(map(lambda datum: "Broker: {0} Rack: {1}".format(str(datum['brokerId']), datum['rack']), host_info))))
+    logger.debug("\n\nHost Rack Information: \n%s\n", "\n".join(list(map(lambda datum: "Broker: {0} Rack: {1}".format(str(datum['brokerId']), datum['rack']), host_info))))
     fd_list, ud_list = generate_fd_list_ud_list(host_info)
     fd_count, ud_count = len(fd_list), len(ud_list)
 
