@@ -23,7 +23,8 @@ The script relies on various python modules. If not installed already, you must 
 ```
 sudo apt-get update
 sudo apt-get install libffi-dev libssl-dev
-sudo pip install --upgrade requests[security] PyOpenSSL ndg-httpsclient pyasn1 kazoo retry pexpect
+sudo pip install --upgrade PyOpenSSL ndg-httpsclient pyasn1 retry pexpect
+sudo pip install kazoo requests[security]
 ```
 
 ## How to use
