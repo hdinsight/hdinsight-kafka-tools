@@ -774,8 +774,8 @@ class ReassignmentGenerator:
         retained_assignment={"partitions":[]}
         balanced_partitions = []
 
-        # Check if(Min(#UD,#FD) > = #replicas)
-        if (ud_count < replica_count_topic) or (fd_count==2 and replica_count_topic<4) or (fd_count == 3 and replica_count_topic < 3):
+        # Check if #replicas is less than 3 if #FD==3/#FD==1 or #replica is less than 4 if #FD is 2
+        if (fd_count == 1 and replica_count_topic < 3) or (fd_count==2 and replica_count_topic<4) or (fd_count == 3 and replica_count_topic < 3):
             logger.warning("""
             There are not as many upgrade/fault domains as the replica count for the topic %s.\n
             Replica Count: %s, Number of Fault Domains: %s, Number of Update Domains: %s.\n
