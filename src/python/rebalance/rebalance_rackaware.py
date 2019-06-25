@@ -13,7 +13,7 @@ sudo python rebalance_new.py
 '''
 
 import pprint
-import logging, sys, json, subprocess, os.path, errno, traceback, argparse, requests, os, re, time, tempfile, pexpect, random
+import logging, sys, json, subprocess, os.path, errno, traceback, argparse, requests, os, re, time, tempfile, pexpect, random, socket
 from retry import retry
 from operator import itemgetter
 from logging import StreamHandler
@@ -333,9 +333,23 @@ def get_brokerhost_info(zookeeper_client):
     for zk_broker_id in zk_brokers_ids:
         zk_broker_id_data, stat = zookeeper_client.get('{0}/{1}'.format(BROKERS_ID_PATH, zk_broker_id))
         zk_broker_info = json.loads(zk_broker_id_data)
-        zk_broker_host = zk_broker_info['host'].split('.')[0]
+        zk_broker_host = _get_fqdn(zk_broker_info['host'])
         brokers_info[zk_broker_host] = zk_broker_id
     return brokers_info
+
+def _valid_ipv4_address(host):
+    sub_parts = host.split('.')
+    if len(sub_parts) != 4:
+        return False
+    try:
+        return all(0<=int(part)<256 for part in sub_parts)
+    except ValueError:
+        return False
+
+def _get_fqdn(zk_broker_host):
+    if _valid_ipv4_address(zk_broker_host):
+        zk_broker_host = socket.getfqdn(zk_broker_host)
+    return zk_broker_host.split('.')[0]
 
 def generate_fd_list_ud_list(host_info):
     # Get set of UDs & FDs
