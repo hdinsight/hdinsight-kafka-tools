@@ -257,8 +257,8 @@ def get_replica_count_topic(topic):
     if len(topicInfo_lines) < 2:
         raise_error("Failed to parse Kafka topic info")
 
-    preSummary = topicInfo_lines[0].replace(": ", ":")
-    summary = preSummary.split()
+    summaryWithSpaceFixed = topicInfo_lines[0].replace(": ", ":")
+    summary = summaryWithSpaceFixed .split()
     replica_count = int(summary[2].split(":")[1])
     return replica_count
 
