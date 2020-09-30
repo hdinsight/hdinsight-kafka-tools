@@ -257,7 +257,8 @@ def get_replica_count_topic(topic):
     if len(topicInfo_lines) < 2:
         raise_error("Failed to parse Kafka topic info")
 
-    summary = topicInfo_lines[0].split()
+    summaryWithSpaceFixed = topicInfo_lines[0].replace(": ", ":")
+    summary = summaryWithSpaceFixed .split()
     replica_count = int(summary[2].split(":")[1])
     return replica_count
 
@@ -917,7 +918,7 @@ def get_kafka_hdp_version():
     assert p1.wait() == 0
     data = data.split('\n')[0].split('/')[-1].split('-')
     splits = data[1].split('.')
-    kafka_version = splits[0] + "." + splits[1] + "." + splits[2]
+    kafka_version = ".".join(splits[:3])
 
     # Verify Kafka version is >= 0.8.1. The official partition reassignment tool is not stable for lower versions
     if int(splits[0]) < 1:
@@ -925,7 +926,7 @@ def get_kafka_hdp_version():
              if int(splits[2]) < 1:
                  logger.warning("The official Kafka Partition reassignment tool has known bugs for versions 0.8.0 and below, and can render a topic unusable. Please see https://cwiki.apache.org/confluence/display/KAFKA/Replication+tools for more info. The tool is stable from version 0.8.1. It is highly discouraged to continue execution.")
 
-    hdp_version = splits[3] + "." + splits[4] + "." + splits[5] + "." + splits[6]
+    hdp_version = ".".join(splits[3:])
     return kafka_version, hdp_version
 
 '''
