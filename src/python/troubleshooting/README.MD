@@ -15,15 +15,15 @@ Clone the repository on any HDInsight cluster node using the following command:
 git clone https://github.com/hdinsight/hdinsight-kafka-tools.git
 ```
 
-The scripts are be located under ```hdinsight-kafka-tools/src/python/troubleshooting``` and can be executed from any directory.
+The scripts are being located under ```hdinsight-kafka-tools/src/python/troubleshooting``` and can be executed from any directory.
 
-|Script|File|When to use|Description|
--------|----|-----------|-----------|
-|Kafka Performance Test|[kafka_perf_test.py](kafka_perf_test.py)|Anytime|A quick performance test for Kafka.|
-|Kafka Broker Status|[kafka_broker_status.py](kafka_broker_status.py)|Anytime|Reports Broker status for all Kafka Brokers.|
-|Kafka Restart Brokers|[kafka_restart_brokers.py](kafka_restart_brokers.py)|Post Kafka configuration update|Restarts Kafka brokers based on health check.|
-|Kafka Restart Controller|[kafka_restart_controller.py](kafka_restart_controller.py)|For clearing Kafka controller state for partition leadership issues|Restarts Kafka Broker that is the current controller.|
-|Kafka Topic Describe|[kafka_topic_describe.py](kafka_topic_describe.py)|Anytime|Wrapper script for Kafka Topic describe that takes care of all inputs.|
+| Script                   | File                                                       | When to use                                                         | Description                                                            |
+|--------------------------|------------------------------------------------------------|---------------------------------------------------------------------|------------------------------------------------------------------------|
+| Kafka Performance Test   | [kafka_perf_test.py](kafka_perf_test.py)                   | Anytime                                                             | A quick performance test for Kafka.                                    |
+| Kafka Broker Status      | [kafka_broker_status.py](kafka_broker_status.py)           | Anytime                                                             | Reports Broker status for all Kafka Brokers.                           |
+| Kafka Restart Brokers    | [kafka_restart_brokers.py](kafka_restart_brokers.py)       | Post Kafka configuration update                                     | Restarts Kafka brokers based on health check.                          |
+| Kafka Restart Controller | [kafka_restart_controller.py](kafka_restart_controller.py) | For clearing Kafka controller state for partition leadership issues | Restarts Kafka Broker that is the current controller.                  |
+| Kafka Topic Describe     | [kafka_topic_describe.py](kafka_topic_describe.py)         | Anytime                                                             | Wrapper script for Kafka Topic describe that takes care of all inputs. |
 
 
 ## Kafka Performance Test
