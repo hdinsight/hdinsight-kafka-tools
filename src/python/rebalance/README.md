@@ -59,7 +59,7 @@ Without "--execute" this tool only scans the current assignment generates the re
 
 ```sudo python rebalance_rackaware.py --topics ALL --rebalancePlanDir /tmp/rebalance/```
 
-The plan will be saved at /tmp/kafka_rebalance/rebalancePlan.json
+The plan will be saved at /tmp/rebalance/kafkaRebalancePlan.json
 
 #### Execute reassignment:
 
