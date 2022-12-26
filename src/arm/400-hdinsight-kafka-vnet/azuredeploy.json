@@ -84,7 +84,7 @@
         "virtualNetworkName": "[concat('vnet', uniqueString(resourceGroup().id))]",
         "virtualNetworkPrefix": "10.0.0.0/16",
         "virtualNetworkDefaultSubnetName": "default",
-        "virtualNetworkSubnet1Prefix": "10.0.0.0/20"
+        "virtualNetworkSubnet1Prefix": "10.0.0.0/20",
         "clusterType": "kafka"
     },
     "resources": [
