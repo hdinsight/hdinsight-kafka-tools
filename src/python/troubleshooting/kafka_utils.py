@@ -1,19 +1,31 @@
-﻿import datetime, json, logging, pprint, subprocess, time, sys
-from retry import retry
+﻿import datetime
+import json
+import logging
+import pprint
+import subprocess
+import sys
+import time
 
-from hdinsight_common.AmbariHelper import AmbariHelper
 from hdinsight_common import Constants
-
+from hdinsight_common.AmbariHelper import AmbariHelper
 from kazoo.client import KazooClient
 from kazoo.client import KazooState
-from kazoo.protocol.states import EventType
+from retry import retry
+
+
+def zk_connection_loss_check(state):
+    """Checks for Zookeeper connection loss
+    """
+    if state == KazooState.LOST or state == KazooState.SUSPENDED:
+        raise RuntimeError('Fatal error lost connection to zookeeper.')
+
 
 class KafkaUtils:
     """Utility class for Kafka troubleshooting scripts.
     
     The class provides methods and routines for various Ambari and Zookeeper operations.
     """
-    
+
     """Constants"""
     SERVICE_KAFKA = 'KAFKA'
     COMPONENT_KAFKA_BROKER = 'KAFKA_BROKER'
@@ -21,6 +33,8 @@ class KafkaUtils:
     ZK_KAFKA_CONTROLLER_PATH = 'controller'
     STATE_INSTALLED = 'INSTALLED'
     STATE_STARTED = 'STARTED'
+    KAFKA_HOME = '/usr/hdp/current/kafka-broker/'
+    KAFKA_LIBS_PATH = KAFKA_HOME + 'libs/'
 
     KAFKA_BROKER_PORT = '9092'
     ZOOKEEPER_PORT = '2181'
@@ -28,7 +42,7 @@ class KafkaUtils:
     TIMEOUT_SECS = 900
     SLEEP_SECS = 30
 
-    def __init__(self, logger_arg, log_file, debug_mode = False):
+    def __init__(self, logger_arg, log_file, debug_mode=False):
         """Constructor for KafkaUtils that sets up the logging module and AmbariHelper.
         """
         self.debug_mode = debug_mode
@@ -56,7 +70,7 @@ class KafkaUtils:
         self.cluster_manifest = self.ambari_helper.get_cluster_manifest()
         self.cluster_name = self.cluster_manifest.deployment.cluster_name
 
-    def run_shell_command(self, shell_command, throw_on_error = True):
+    def run_shell_command(self, shell_command, throw_on_error=True):
         """Runs a shell command locally and returns the stdout, stderr
         """
         self.logger.info(shell_command)
@@ -69,7 +83,7 @@ class KafkaUtils:
 
             if stderr:
                 self.logger.error('\n' + stderr)
-        
+
             if throw_on_error and (not (p.returncode == 0)):
                 self.logger.error('Process returned non-zero exit code: {0}'.format(p.returncode))
                 sys.exit(p.returncode)
@@ -79,7 +93,8 @@ class KafkaUtils:
     def get_hosts_from_ambari(self):
         """Gets Hosts from Ambari.
         """
-        hosts_result = self.ambari_helper.request_url('clusters/{0}/hosts'.format(self.cluster_name), 'GET', {'fields' : 'Hosts/ip'})
+        hosts_result = self.ambari_helper.request_url('clusters/{0}/hosts'.format(self.cluster_name), 'GET',
+                                                      {'fields': 'Hosts/ip'})
 
         hosts = {}
         for host in hosts_result['items']:
@@ -92,11 +107,12 @@ class KafkaUtils:
         """
         hosts = self.get_hosts_from_ambari()
 
-        zk_hosts = { k:v for k,v in hosts.iteritems() if k.startswith(self.cluster_manifest.settings[Constants.ZOOKEEPER_VM_NAME_PREFIX_SETTING_KEY])}
+        zk_hosts = {k: v for k, v in hosts.iteritems() if
+                    k.startswith(self.cluster_manifest.settings[Constants.ZOOKEEPER_VM_NAME_PREFIX_SETTING_KEY])}
         self.logger.debug('zk_hosts:\n{0}\n'.format(pprint.pformat(zk_hosts)))
 
-        zk_quorum = reduce(lambda r1, r2 : r1 + ',' + r2,
-                        map(lambda m : m + ':' + self.ZOOKEEPER_PORT, zk_hosts))
+        zk_quorum = reduce(lambda r1, r2: r1 + ',' + r2,
+                           map(lambda m: m + ':' + self.ZOOKEEPER_PORT, zk_hosts))
 
         self.logger.debug('zk_quorum: {0}\n'.format(zk_quorum))
 
@@ -113,12 +129,13 @@ class KafkaUtils:
         """
         hosts = self.get_hosts_from_ambari()
 
-        broker_hosts = { k:v for k,v in hosts.iteritems() if k.startswith(self.cluster_manifest.settings[Constants.WORKERNODE_VM_NAME_PREFIX_SETTING_KEY])}
+        broker_hosts = {k: v for k, v in hosts.iteritems() if
+                        k.startswith(self.cluster_manifest.settings[Constants.WORKERNODE_VM_NAME_PREFIX_SETTING_KEY])}
         self.logger.debug('broker_hosts:\n{0}\n'.format(pprint.pformat(broker_hosts)))
 
-        brokers = reduce(lambda r1, r2 : r1 + ',' + r2,
-                      map(lambda m : m + ':' + self.KAFKA_BROKER_PORT,
-                          broker_hosts))
+        brokers = reduce(lambda r1, r2: r1 + ',' + r2,
+                         map(lambda m: m + ':' + self.KAFKA_BROKER_PORT,
+                             broker_hosts))
         self.logger.debug('brokers: {0}\n'.format(brokers))
 
         return broker_hosts, brokers
@@ -126,7 +143,8 @@ class KafkaUtils:
     def get_brokers_from_zookeeper(self):
         """Gets the Kafka Broker information from Zookeeper for live brokers.
         
-        Returns a dictionary of Brokers with host name as the key, where each entry contains another dictionary for that broker information
+        Returns a dictionary of Brokers with host name as the key, where each entry contains another dictionary for
+        that broker information
         """
         zk_quorum = self.get_zookeeper_quorum()
         zk = self.zk_connect(zk_quorum)
@@ -138,7 +156,7 @@ class KafkaUtils:
             zk_broker_id_data, stat = zk.get('{0}/{1}'.format(self.ZK_KAFKA_BROKER_PATH, zk_broker_id))
             zk_broker_info = json.loads(zk_broker_id_data)
             zk_broker_info['id'] = zk_broker_id
-            zk_broker_datetime = datetime.datetime.utcfromtimestamp(int(zk_broker_info['timestamp'])/1000.0)
+            zk_broker_datetime = datetime.datetime.utcfromtimestamp(int(zk_broker_info['timestamp']) / 1000.0)
             zk_broker_info['datetime'] = zk_broker_datetime.strftime('%Y-%m-%d %H:%M:%S')
             zk_broker_info['duration'] = str((datetime.datetime.utcnow() - zk_broker_datetime))
             zk_brokers_info[zk_broker_info['host']] = zk_broker_info
@@ -155,7 +173,7 @@ class KafkaUtils:
         zk.stop()
 
         zk_controller = json.loads(zk_controller_data)
-        zk_controller_datetime = datetime.datetime.utcfromtimestamp(int(zk_controller['timestamp'])/1000.0)
+        zk_controller_datetime = datetime.datetime.utcfromtimestamp(int(zk_controller['timestamp']) / 1000.0)
         zk_controller['datetime'] = zk_controller_datetime.strftime('%Y-%m-%d %H:%M:%S')
         zk_controller['duration'] = str((datetime.datetime.utcnow() - zk_controller_datetime))
 
@@ -169,20 +187,24 @@ class KafkaUtils:
     def get_stale_hosts_from_ambari(self, component_name):
         """Gets hosts from Ambari that have Stale configs for the given component_name
         """
-        params = {'HostRoles/stale_configs' : 'true', 'HostRoles/component_name' : component_name}
-        hosts_result = self.ambari_helper.request_url('clusters/{0}/host_components'.format(self.cluster_name), 'GET', params)
+        params = {'HostRoles/stale_configs': 'true', 'HostRoles/component_name': component_name}
+        hosts_result = self.ambari_helper.request_url('clusters/{0}/host_components'.format(self.cluster_name), 'GET',
+                                                      params)
 
-        stale_hosts = map(lambda m : m['HostRoles']['host_name'],
-                        filter(lambda h : h['HostRoles']['host_name'].startswith(self.cluster_manifest.settings[Constants.WORKERNODE_VM_NAME_PREFIX_SETTING_KEY]), 
-                            hosts_result['items']))
-        self.logger.info('Hosts with stale configs for component {0}: {1}\n{2}\n'.format(component_name, len(stale_hosts), pprint.pformat(stale_hosts)))
+        stale_hosts = map(lambda m: m['HostRoles']['host_name'],
+                          filter(lambda h: h['HostRoles']['host_name'].startswith(
+                              self.cluster_manifest.settings[Constants.WORKERNODE_VM_NAME_PREFIX_SETTING_KEY]),
+                                 hosts_result['items']))
+        self.logger.info(
+            'Hosts with stale configs for component {0}: {1}\n{2}\n'.format(component_name, len(stale_hosts),
+                                                                            pprint.pformat(stale_hosts)))
         return stale_hosts
 
     def restart_kafka_broker_from_ambari(self, host_name):
         """Restart the Kafka Broker on the host.
         """
         return self.restart_component_from_ambari(host_name, self.SERVICE_KAFKA, self.COMPONENT_KAFKA_BROKER)
-    
+
     def restart_component_from_ambari(self, host_name, service_name, component_name):
         """Restart the component for a service on the host.
         """
@@ -192,7 +214,8 @@ class KafkaUtils:
     def get_component_from_ambari(self, host_name, service_name, component_name):
         """Gets the component state from Ambari for the host.
         """
-        host_component_url = 'clusters/{0}/hosts/{1}/host_components/{2}'.format(self.cluster_name, host_name, component_name)
+        host_component_url = 'clusters/{0}/hosts/{1}/host_components/{2}'.format(self.cluster_name, host_name,
+                                                                                 component_name)
         return self.ambari_helper.query_url(host_component_url)
 
     def stop_component_from_ambari(self, host_name, service_name, component_name):
@@ -214,26 +237,34 @@ class KafkaUtils:
         timeout = now + self.TIMEOUT_SECS
         while time.time() < timeout:
             component = self.get_component_from_ambari(host_name, service_name, component_name)
-            if (component['HostRoles']['state'] == state):
-                self.logger.debug('Component {0} on host {1} reached the desired state: {2}'.format(component_name, host_name, state))
+            if component['HostRoles']['state'] == state:
+                self.logger.debug(
+                    'Component {0} on host {1} reached the desired state: {2}'.format(component_name, host_name, state))
                 return component
             else:
-                self.logger.debug('Component {0} on host {1} has not yet reached the desired state: {2}. Current state: {3}, Time Elapsed: {4:.2f}'.format(
-                    component_name, host_name, state, component['HostRoles']['state'], (time.time() - now)))
+                self.logger.debug(
+                    'Component {0} on host {1} has not yet reached the desired state: {2}. Current state: {3}, '
+                    'Time Elapsed: {4:.2f}'.format(
+                        component_name, host_name, state, component['HostRoles']['state'], (time.time() - now)))
             time.sleep(self.SLEEP_SECS)
-        err_msg = 'Component {0} on host {1} did not reach the desired state: {2} in {3} secs.'.format(component_name, host_name, state, self.TIMEOUT_SECS)
+        err_msg = 'Component {0} on host {1} did not reach the desired state: {2} in {3} secs.'.format(component_name,
+                                                                                                       host_name, state,
+                                                                                                       self.TIMEOUT_SECS)
         self.logger.error(err_msg)
         raise RuntimeError(err_msg)
 
-    @retry(exceptions=BaseException, tries=Constants.MAX_RETRIES, delay=Constants.RETRY_INTERVAL_DELAY, backoff=Constants.RETRY_INTERVAL_BACKOFF)
+    @retry(exceptions=BaseException, tries=Constants.MAX_RETRIES, delay=Constants.RETRY_INTERVAL_DELAY,
+           backoff=Constants.RETRY_INTERVAL_BACKOFF)
     def change_host_component_state_from_ambari(self, host_name, service_name, component_name, state):
         """
         Convenience method for changing the state of a particular host component. State values can be 'STARTED' or 'INSTALLED'
         """
-        host_component_url = 'clusters/{0}/hosts/{1}/host_components/{2}'.format(self.cluster_name, host_name, component_name)
+        host_component_url = 'clusters/{0}/hosts/{1}/host_components/{2}'.format(self.cluster_name, host_name,
+                                                                                 component_name)
         payload = {
             'RequestInfo': {
-                'context' : 'Change host component state for host {0} and component {1} to state {2} via REST'.format(host_name, component_name, state)
+                'context': 'Change host component state for host {0} and component {1} to state {2} via REST'.format(
+                    host_name, component_name, state)
             },
             'Body': {
                 'HostRoles': {
@@ -259,3 +290,14 @@ class KafkaUtils:
         zk.start()
         zk.add_listener(self.zk_connection_loss_check)
         return zk
+
+    def get_kafka_hdp_version(self):
+        p1 = subprocess.Popen(["find {0} -name \*kafka_\*".format(self.KAFKA_LIBS_PATH)], shell=True, stdout=subprocess.PIPE)
+        data = p1.stdout.readline()
+        assert p1.wait() == 0
+        data = data.split('\n')[0].split('/')[-1].split('-')
+        splits = data[1].split('.')
+        kafka_version = ".".join(splits[:3])
+
+        hdp_version = ".".join(splits[3:])
+        return kafka_version, hdp_version
