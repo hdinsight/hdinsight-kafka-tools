@@ -1,11 +1,11 @@
-# This script is used to create a Hdinsight Kafka cluster. The script creates a resourge group, WASB storage account, storage account.
+# This script is used to create a Hdinsight Kafka cluster. The script creates a resourge group, WASB storage account, storage accoun in an existing virtual network.
 # If these resources already exist, you can comment out the corresponding lines that create new resources. 
 
 # Select the subscription to use
 $subscriptionID = "<SubscriptionName>"
 
 # Cluster details
-$hdiversion = "3.4"
+$hdiversion = "5.1"
 $token ="<SpecifyAnUniqueString>"
 # Resource Group Name
 $resourceGroupName = $token + "rg"
@@ -18,7 +18,13 @@ $defaultStorageAccountName = $token + "store"
 # Default container Name
 $defaultStorageContainerName = $token + "container"
 # Number of worker nodes (brokers) in the clusters
-$clusterNodes = 1 
+$clusterNodes = 1
+# Existing virtual network's Id. Format:
+# "/subscriptions/YOUR_SUBSCRIPTION_ID/resourceGroups/RESOURCE_GROUP_NAME/providers/microsoft.network/virtualNetworks/VIRTUAL_NETWORK_NAME",
+$virtualNetworkId = "VIRTUAL_NETWORK_ID"
+# Subnet Name. Format:
+# "/subscriptions/YOUR_SUBSCRIPTION_ID/resourceGroups/RESOURCE_GROUP_NAME/providers/microsoft.network/virtualNetworks/VIRTUAL_NETWORK_NAME/subnets/SUBNET_NAME"
+$subnetName = "SUBNET_NAME"
 
 $clusterCredential = Get-Credential -Message "Enter Cluster user credentials" -UserName "admin"
 $clusterSshCredential = Get-Credential -Message "Enter SSH user credentials"
@@ -57,5 +63,7 @@ New-AzureRmHDInsightCluster `
     -ClusterType Kafka `
     -OSType Linux `
     -Version $hdiversion `
-    -HeadNodeSize "Standard_D3" `
-    -WorkerNodeSize "Standard_D3"
+    -HeadNodeSize "Standard_D3"  `
+    -WorkerNodeSize "Standard_D3" `
+    -VirtualNetworkId $virtualNetworkId `
+    -SubnetName $subnetName
