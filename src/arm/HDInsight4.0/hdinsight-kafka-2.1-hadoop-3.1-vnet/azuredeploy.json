@@ -1,4 +1,4 @@
-{
+﻿{
     "$schema": "https://schema.management.azure.com/schemas/2015-01-01/deploymentTemplate.json#",
     "contentVersion": "1.0.0.0",
     "parameters": {
@@ -10,28 +10,28 @@
         },
         "clusterVersion": {
             "type": "string",
-            "defaultValue": "3.6",
+            "defaultValue": "4.0",
             "metadata": {
                 "description": "The HDInsight version to deploy."
             }
         },
         "headNodeSize": {
             "type": "string",
-            "defaultValue": "Standard_D4_v2",
+            "defaultValue": "Standard_D4_V2",
             "metadata": {
                 "description": "The VM size of the head nodes."
             }
         },
         "workerNodeSize": {
             "type": "string",
-            "defaultValue": "Standard_D4_v2",
+            "defaultValue": "Standard_D4_V2",
             "metadata": {
                 "description": "The VM size of the worker nodes."
             }
         },
         "zookeeperNodeSize": {
             "type": "string",
-            "defaultValue": "Standard_D3_v2",
+            "defaultValue": "Standard_D3_V2",
             "metadata": {
                 "description": "The VM size of the zookeeper nodes."
             }
@@ -74,13 +74,6 @@
             "metadata": {
                 "description": "The password must be at least 10 characters in length and must contain at least one digit, one non-alphanumeric character, and one upper or lower case letter."
             }
-        },
-        "sparkVersion": {
-            "type": "string",
-            "defaultValue": "2.1",
-            "metadata": {
-                "description": "Spark version to be installed in the cluster. This parameter only applies to Spark cluster type in HDI 3.5 and will fail for other cluster types and other cluster versions."
-            }
         }
     },
     "variables": {
@@ -94,8 +87,8 @@
         "virtualNetworkSubnet1Prefix": "10.0.0.0/20",
         "clusterType": "kafka",
         "clusterName": "[concat(variables('clusterType'), parameters('clusterNameSuffix'))]",
-        "sparkClusterType": "spark",
-        "sparkClusterName": "[concat(variables('sparkClusterType'), parameters('clusterNameSuffix'))]"
+        "hadoopClusterType": "hadoop",
+        "hadoopClusterName": "[concat(variables('hadoopClusterType'), parameters('clusterNameSuffix'))]"
     },
     "resources": [
         {
@@ -231,7 +224,7 @@
             ]
         },
         {
-            "name": "[variables('sparkClusterName')]",
+            "name": "[variables('hadoopClusterName')]",
             "type": "Microsoft.HDInsight/clusters",
             "location": "[resourceGroup().location]",
             "apiVersion": "[variables('clusterApiVersion')]",
@@ -239,10 +232,7 @@
                 "clusterVersion": "[parameters('clusterVersion')]",
                 "osType": "Linux",
                 "clusterDefinition": {
-                    "kind": "[variables('sparkClusterType')]",
-                    "componentVersion": {
-                        "Spark": "[parameters('sparkVersion')]"
-                    },
+                    "kind": "[variables('hadoopClusterType')]",
                     "configurations": {
                         "gateway": {
                             "restAuthCredential.isEnabled": true,
@@ -256,7 +246,7 @@
                         {
                             "name": "[concat(variables('defaultStorageName'),'.blob.core.windows.net')]",
                             "isDefault": true,
-                            "container": "[variables('sparkClusterName')]",
+                            "container": "[variables('hadoopClusterName')]",
                             "key": "[listKeys(resourceId('Microsoft.Storage/storageAccounts', variables('defaultStorageName')), variables('defaultApiVersion')).key1]"
                         }
                     ]
@@ -311,9 +301,9 @@
             "type": "object",
             "value": "[reference(resourceId('Microsoft.HDInsight/clusters', variables('clusterName')))]"
         },
-        "sparkCluster": {
+        "hadoopCluster": {
             "type": "object",
-            "value": "[reference(resourceId('Microsoft.HDInsight/clusters', variables('sparkClusterName')))]"
+            "value": "[reference(resourceId('Microsoft.HDInsight/clusters', variables('hadoopClusterName')))]"
         }
     }
 }
