@@ -7,4 +7,4 @@
     <img src="http://armviz.io/visualizebutton.png"/>
 </a>
 
-This template allows you to create a Linux-based HDInsight Kafka cluster with managed disks and a Linux-based HDInsight Spark cluster in the same virtual network.
+This template allows you to create a Linux-based HDInsight Kafka cluster 2.4 (HDI 5.0)  with managed disks and a Linux-based HDInsight Spark cluster 3.1 (HDI 5.0) in the same virtual network.

@@ -5,7 +5,7 @@
 $subscriptionID = "<SubscriptionName>"
 
 # Cluster details
-$hdiversion = "3.4"
+$hdiversion = "5.0"
 $token ="<SpecifyAnUniqueString>"
 # Resource Group Name
 $resourceGroupName = $token + "rg"

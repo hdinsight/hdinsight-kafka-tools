@@ -10,7 +10,7 @@
         },
         "clusterVersion": {
             "type": "string",
-            "defaultValue": "3.6",
+            "defaultValue": "5.0",
             "metadata": {
                 "description": "The HDInsight version to deploy."
             }
@@ -85,7 +85,8 @@
         "virtualNetworkPrefix": "10.0.0.0/16",
         "virtualNetworkDefaultSubnetName": "default",
         "virtualNetworkSubnet1Prefix": "10.0.0.0/20",
-        "clusterType": "kafka"
+        "clusterType": "kafka",
+        "componentVersion": "2.4"
     },
     "resources": [
         {
@@ -136,6 +137,9 @@
                 "osType": "Linux",
                 "clusterDefinition": {
                     "kind": "[variables('clusterType')]",
+                    "componentVersion": {
+                        "Kafka": "[variables('componentVersion')]"
+                    },
                     "configurations": {
                         "gateway": {
                             "restAuthCredential.isEnabled": true,
@@ -180,7 +184,7 @@
                                 "vmSize": "[parameters('workerNodeSize')]"
                             },
                             "dataDisksGroups": [
-                                { 
+                                {
                                     "disksPerNode":  "[parameters('disksPerWorkerNode')]"
                                 }
                             ],

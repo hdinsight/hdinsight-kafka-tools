@@ -2,36 +2,36 @@
     "$schema": "https://schema.management.azure.com/schemas/2015-01-01/deploymentTemplate.json#",
     "contentVersion": "1.0.0.0",
     "parameters": {
-        "clusterNameSuffix": {
+        "clusterName": {
             "type": "string",
             "metadata": {
-                "description": "The cluster name suffix, cluster type is the prefix"
+                "description": "The name of the cluster to create."
             }
         },
         "clusterVersion": {
             "type": "string",
-            "defaultValue": "3.6",
+            "defaultValue": "4.0",
             "metadata": {
                 "description": "The HDInsight version to deploy."
             }
         },
         "headNodeSize": {
             "type": "string",
-            "defaultValue": "Standard_D4_v2",
+            "defaultValue": "Standard_D4_V2",
             "metadata": {
                 "description": "The VM size of the head nodes."
             }
         },
         "workerNodeSize": {
             "type": "string",
-            "defaultValue": "Standard_D4_v2",
+            "defaultValue": "Standard_D4_V2",
             "metadata": {
                 "description": "The VM size of the worker nodes."
             }
         },
         "zookeeperNodeSize": {
             "type": "string",
-            "defaultValue": "Standard_D3_v2",
+            "defaultValue": "Standard_D3_V2",
             "metadata": {
                 "description": "The VM size of the zookeeper nodes."
             }
@@ -86,9 +86,7 @@
         "virtualNetworkDefaultSubnetName": "default",
         "virtualNetworkSubnet1Prefix": "10.0.0.0/20",
         "clusterType": "kafka",
-        "clusterName": "[concat(variables('clusterType'), parameters('clusterNameSuffix'))]",
-        "stormClusterType": "storm",
-        "stormClusterName": "[concat(variables('stormClusterType'), parameters('clusterNameSuffix'))]"
+        "componentVersion": "2.1"
     },
     "resources": [
         {
@@ -130,7 +128,7 @@
             }
         },
         {
-            "name": "[variables('clusterName')]",
+            "name": "[parameters('clusterName')]",
             "type": "Microsoft.HDInsight/clusters",
             "location": "[resourceGroup().location]",
             "apiVersion": "[variables('clusterApiVersion')]",
@@ -139,6 +137,9 @@
                 "osType": "Linux",
                 "clusterDefinition": {
                     "kind": "[variables('clusterType')]",
+                    "componentVersion": {
+                        "Kafka": "[variables('componentVersion')]"
+                    },
                     "configurations": {
                         "gateway": {
                             "restAuthCredential.isEnabled": true,
@@ -152,7 +153,7 @@
                         {
                             "name": "[concat(variables('defaultStorageName'),'.blob.core.windows.net')]",
                             "isDefault": true,
-                            "container": "[variables('clusterName')]",
+                            "container": "[parameters('clusterName')]",
                             "key": "[listKeys(resourceId('Microsoft.Storage/storageAccounts', variables('defaultStorageName')), variables('defaultApiVersion')).key1]"
                         }
                     ]
@@ -183,99 +184,10 @@
                                 "vmSize": "[parameters('workerNodeSize')]"
                             },
                             "dataDisksGroups": [
-                                { 
+                                {
                                     "disksPerNode":  "[parameters('disksPerWorkerNode')]"
                                 }
                             ],
-                            "osProfile": {
-                                "linuxOperatingSystemProfile": {
-                                    "username": "[parameters('sshUserName')]",
-                                    "password": "[parameters('sshPassword')]"
-                                }
-                            },
-                            "virtualNetworkProfile": {
-                                "id": "[resourceId('Microsoft.Network/virtualNetworks', variables('virtualNetworkName'))]",
-                                "subnet": "[concat('Microsoft.Network/virtualNetworks', variables('virtualNetworkName'), '/subnets/', variables('virtualNetworkDefaultSubnetName'))]"
-                            }
-                        },
-                        {
-                            "name": "zookeepernode",
-                            "targetInstanceCount": 3,
-                            "hardwareProfile": {
-                                "vmSize": "[parameters('zookeeperNodeSize')]"
-                            },
-                            "osProfile": {
-                                "linuxOperatingSystemProfile": {
-                                    "username": "[parameters('sshUserName')]",
-                                    "password": "[parameters('sshPassword')]"
-                                }
-                            },
-                            "virtualNetworkProfile": {
-                                "id": "[resourceId('Microsoft.Network/virtualNetworks', variables('virtualNetworkName'))]",
-                                "subnet": "[concat('Microsoft.Network/virtualNetworks', variables('virtualNetworkName'), '/subnets/', variables('virtualNetworkDefaultSubnetName'))]"
-                            }
-                        }
-                    ]
-                }
-            },
-            "dependsOn": [
-                "[variables('defaultStorageName')]",
-                "[variables('virtualNetworkName')]"
-            ]
-        },
-        {
-            "name": "[variables('stormClusterName')]",
-            "type": "Microsoft.HDInsight/clusters",
-            "location": "[resourceGroup().location]",
-            "apiVersion": "[variables('clusterApiVersion')]",
-            "properties": {
-                "clusterVersion": "[parameters('clusterVersion')]",
-                "osType": "Linux",
-                "clusterDefinition": {
-                    "kind": "[variables('stormClusterType')]",
-                    "configurations": {
-                        "gateway": {
-                            "restAuthCredential.isEnabled": true,
-                            "restAuthCredential.username": "[parameters('clusterLoginUserName')]",
-                            "restAuthCredential.password": "[parameters('clusterLoginPassword')]"
-                        }
-                    }
-                },
-                "storageProfile": {
-                    "storageaccounts": [
-                        {
-                            "name": "[concat(variables('defaultStorageName'),'.blob.core.windows.net')]",
-                            "isDefault": true,
-                            "container": "[variables('stormClusterName')]",
-                            "key": "[listKeys(resourceId('Microsoft.Storage/storageAccounts', variables('defaultStorageName')), variables('defaultApiVersion')).key1]"
-                        }
-                    ]
-                },
-                "computeProfile": {
-                    "roles": [
-                        {
-                            "name": "headnode",
-                            "targetInstanceCount": "2",
-                            "hardwareProfile": {
-                                "vmSize": "[parameters('headNodeSize')]"
-                            },
-                            "osProfile": {
-                                "linuxOperatingSystemProfile": {
-                                    "username": "[parameters('sshUserName')]",
-                                    "password": "[parameters('sshPassword')]"
-                                }
-                            },
-                            "virtualNetworkProfile": {
-                                "id": "[resourceId('Microsoft.Network/virtualNetworks', variables('virtualNetworkName'))]",
-                                "subnet": "[concat(resourceId('Microsoft.Network/virtualNetworks', variables('virtualNetworkName')), '/subnets/', variables('virtualNetworkDefaultSubnetName'))]"
-                            }
-                        },
-                        {
-                            "name": "workernode",
-                            "targetInstanceCount": "[parameters('clusterSize')]",
-                            "hardwareProfile": {
-                                "vmSize": "[parameters('workerNodeSize')]"
-                            },
                             "osProfile": {
                                 "linuxOperatingSystemProfile": {
                                     "username": "[parameters('sshUserName')]",
@@ -316,11 +228,7 @@
     "outputs": {
         "cluster": {
             "type": "object",
-            "value": "[reference(resourceId('Microsoft.HDInsight/clusters', variables('clusterName')))]"
-        },
-        "stormCluster": {
-            "type": "object",
-            "value": "[reference(resourceId('Microsoft.HDInsight/clusters', variables('stormClusterName')))]"
+            "value": "[reference(resourceId('Microsoft.HDInsight/clusters', parameters('clusterName')))]"
         }
     }
 }
