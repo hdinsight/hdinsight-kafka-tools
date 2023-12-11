@@ -216,7 +216,7 @@ def get_topic_list():
             s = subprocess.check_output([
                 KAFKA_TOPICS_TOOL_PATH,
                 "--bootstrap-server",
-                get_broker_connect_string,
+                get_broker_connect_string(),
                 "--list"
             ])
         else:
