@@ -675,11 +675,22 @@ class ReassignmentGenerator:
     def _generate_alternated_fd_ud_list(self, fd_ud_list, fd_list, ud_list):
         alternated_list = []
 
-        # Find largest FD# & UD#. This is required because there could be gaps and we need to know the largest # to
-        # compute the possible FD x UD matrix. Missing combinations of (FD,UD) in the VMs allocated are not added to
-        # the final list.
-        fd_length = max(map(int, fd_list)) + 1
-        ud_length = max(map(int, ud_list)) + 1
+        # Validate and compute FD/UD lengths. If lists are empty, invalid, or contain negative values,
+        # fall back to the original fd_ud_list to avoid errors and ensure rebalancing can proceed.
+        if not fd_list or not ud_list:
+            logger.warning("FD or UD lists are empty. Falling back to original rack list.")
+            return list(fd_ud_list)
+        try:
+            fd_nums = [int(x) for x in fd_list]
+            ud_nums = [int(x) for x in ud_list]
+        except ValueError:
+            logger.warning("FD or UD lists contain non-integer values. Falling back to original rack list.")
+            return list(fd_ud_list)
+        if max(fd_nums) < 0 or max(ud_nums) < 0:
+            logger.warning("FD or UD values are negative. Falling back to original rack list.")
+            return list(fd_ud_list)
+        fd_length = max(fd_nums) + 1
+        ud_length = max(ud_nums) + 1
 
         i = 0
         j = 0
