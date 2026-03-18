@@ -563,6 +563,34 @@ def generate_reassignment_plan(plan_directory, topics, brokers_info, compute_sto
     fd_list, ud_list = generate_fd_list_ud_list(host_info)
     fd_count, ud_count = len(fd_list), len(ud_list)
 
+    # Validate FD/UD data to handle clusters with invalid topology.
+    # When FD/UD data is invalid (empty, non-integer, or negative), we set effective counts to 1
+    # to allow downstream logic (next_Leader calculation, reassignment plan generation, HA verification)
+    # to function correctly. Without this guard, invalid data could cause ZeroDivisionError or
+    # incorrect HA rejection on clusters where rack topology is unavailable.
+    has_valid_fd_ud = True
+    try:
+        fd_nums = [int(x) for x in fd_list]
+        ud_nums = [int(x) for x in ud_list]
+        if not fd_nums or not ud_nums or max(fd_nums) < 0 or max(ud_nums) < 0:
+            has_valid_fd_ud = False
+            logger.warning(
+                "Cluster FD/UD topology data is invalid (empty, negative, or non-integer). "
+                "Rebalancing will proceed with basic round-robin broker ordering. "
+                "FD count: %s, UD count: %s, FD values: %s, UD values: %s",
+                fd_count, ud_count, fd_list, ud_list)
+    except ValueError:
+        has_valid_fd_ud = False
+        logger.warning(
+            "Failed to parse FD/UD values as integers. Rebalancing will proceed with basic round-robin ordering. "
+            "FD values: %s, UD values: %s", fd_list, ud_list)
+
+    effective_fd_count = fd_count if has_valid_fd_ud else 1
+    effective_ud_count = ud_count if has_valid_fd_ud else 1
+    logger.debug(
+        "FD/UD validity check - has_valid_fd_ud: %s, effective_fd_count: %s, effective_ud_count: %s",
+        has_valid_fd_ud, effective_fd_count, effective_ud_count)
+
     logger.info("Checking if all brokers are up.")
     if check_brokers_up(host_info):
 
@@ -599,16 +627,21 @@ def generate_reassignment_plan(plan_directory, topics, brokers_info, compute_sto
             rack_alternated_list = reassignment_generator._generate_alternated_fd_ud_list(fd_ud_list, fd_list, ud_list)
             logger.debug("Generated Rack alternated list: %s", str(rack_alternated_list))
 
-            # Variables to keep track of which rack in the alternated list is the next one to be assigned a replica. 
+            # Variables to keep track of which rack in the alternated list is the next one to be assigned a replica.
+            # NOTE: Using effective_ud_count (which is 1 if FD/UD data is invalid) ensures modulo computation doesn't fail.
             rand_rack = random.randrange(0, len(rack_alternated_list))
-            logger.debug("Rand_rack: %s", str(rand_rack))
-            next_Leader = (int(len(ud_list)) * rand_rack) % len(rack_alternated_list)
+            logger.debug("Rand_rack: %s (using effective_ud_count: %s for calculation)", str(rand_rack), effective_ud_count)
+            next_Leader = (int(effective_ud_count) * rand_rack) % len(rack_alternated_list)
 
             logger.debug("Start with position in Rack Alternated List: %s", str(next_Leader))
 
+            # Pass effective counts to reassignment generation to use valid topology data if available,
+            # otherwise use minimal counts (1) for basic round-robin ordering.
             reassignment_plan, balanced_partitions_for_topic = reassignment_generator._generate_reassignment_plan_for_topic(
-                replica_count_topic, next_Leader, rack_alternated_list, fd_count, ud_count, brokers_replica_count,
+                replica_count_topic, next_Leader, rack_alternated_list, effective_fd_count, effective_ud_count, brokers_replica_count,
                 force_rebalance)
+            logger.debug("Generated reassignment plan for topic %s using effective counts (fd: %s, ud: %s)",
+                        topic, effective_fd_count, effective_ud_count)
             logger.debug("\nAlready balanced partitions for the topic %s are: \n%s", topic,
                          balanced_partitions_for_topic)
 
@@ -620,8 +653,11 @@ def generate_reassignment_plan(plan_directory, topics, brokers_info, compute_sto
                     ret["partitions"] += reassignment_plan["partitions"]
                 else:
                     ret = reassignment_plan
+                # Verify plan using effective counts. If FD/UD data was invalid, this uses minimal counts (1)
+                # to avoid incorrectly rejecting HA-compliant plans when topology data is unavailable.
                 verify_plan = reassignment_generator._verify_reassignment_plan(reassignment_plan, topic,
-                                                                               replica_count_topic, fd_count, ud_count)
+                                                                               replica_count_topic, effective_fd_count, effective_ud_count)
+                logger.debug("Verification result for topic %s: %s", topic, verify_plan)
                 verify_leaders_distributed(host_info, ret, global_balanced_partitions)
 
         if ret is not None:
@@ -676,7 +712,9 @@ class ReassignmentGenerator:
         alternated_list = []
 
         # Validate and compute FD/UD lengths. If lists are empty, invalid, or contain negative values,
-        # fall back to the original fd_ud_list to avoid errors and ensure rebalancing can proceed.
+        # fall back to the original fd_ud_list to avoid ZeroDivisionError and ensure rebalancing can proceed.
+        # When FD/UD data is invalid (e.g., negative values like -1 from missing topology data), the diagonal-slice
+        # algorithm is skipped and we use a simple round-robin approach instead.
         if not fd_list or not ud_list:
             logger.warning("FD or UD lists are empty. Falling back to original rack list.")
             return list(fd_ud_list)
